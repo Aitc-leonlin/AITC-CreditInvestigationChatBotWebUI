@@ -1,4 +1,4 @@
-export default `# QA and Chat over Documents
+const defaultRetrievalText = `# QA and Chat over Documents
 
 Chat and Question-Answering (QA) over \`data\` are popular LLM use-cases.
 
@@ -538,3 +538,5 @@ const executor = await initializeAgentExecutorWithOptions(tools, llm, {
 });
 \`\`\`
 `;
+
+export default defaultRetrievalText;

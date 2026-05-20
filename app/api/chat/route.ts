@@ -4,6 +4,7 @@ import { Message as VercelChatMessage, StreamingTextResponse } from "ai";
 import { ChatOpenAI } from "@langchain/openai";
 import { PromptTemplate } from "@langchain/core/prompts";
 import { HttpResponseOutputParser } from "langchain/output_parsers";
+import { buildApiUrl } from "@/utils/api";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -26,6 +27,7 @@ const TEMPLATE = `你是 AITC 的授信調查分析助理。請依照使用者�
 若使用者是延續追問，例如「那跟同業比呢？」、「再細一點」或「上一題的風險在哪？」，
 必須根據完整對話上下文延續回答，不可當成全新問題。
 若資訊不足，請明確說明需要哪些補充資料，避免臆測。
+{system_prompt_block}
 
 Current conversation:
 {chat_history}
@@ -34,7 +36,7 @@ User: {input}
 AI:`;
 
 function buildExternalApiUrl(baseUrl: string, path: string) {
-  return `${baseUrl.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+  return buildApiUrl(path, baseUrl);
 }
 
 function getPeriodLabel(settings: any) {
@@ -66,6 +68,8 @@ async function proxyToBackend(body: any) {
     company: settings.company ?? "",
     period: getPeriodLabel(settings),
     settings,
+    customSystemPrompt: body.customSystemPrompt ?? "",
+    expertKnowledge: body.expertKnowledge ?? null,
     conversationId: body.conversationId ?? "",
     messages,
   };
@@ -137,6 +141,9 @@ export async function POST(req: NextRequest) {
     const formattedPreviousMessages = messages.slice(0, -1).map(formatMessage);
     const currentMessageContent = messages[messages.length - 1].content;
     const prompt = PromptTemplate.fromTemplate(TEMPLATE);
+    const systemPromptBlock = body.customSystemPrompt
+      ? `\n專家知識庫補充指示：\n${body.customSystemPrompt}\n`
+      : "";
 
     /**
      * You can also try e.g.:
@@ -169,6 +176,7 @@ export async function POST(req: NextRequest) {
     const stream = await chain.stream({
       chat_history: formattedPreviousMessages.join("\n"),
       input: currentMessageContent,
+      system_prompt_block: systemPromptBlock,
     });
 
     /**

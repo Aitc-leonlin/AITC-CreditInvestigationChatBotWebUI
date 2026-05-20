@@ -1,5 +1,6 @@
 import { ChatWindow } from "@/components/ChatWindow";
 import { GuideInfoBox } from "@/components/guide/GuideInfoBox";
+import { BACKEND_API_PATHS } from "@/utils/api";
 
 export default function AgentsPage() {
   const InfoCard = (
@@ -76,7 +77,7 @@ export default function AgentsPage() {
   );
   return (
     <ChatWindow
-      endpoint="api/chat/structured_output"
+      endpoint={BACKEND_API_PATHS.chatStructuredOutput}
       emptyStateComponent={InfoCard}
       placeholder={`No matter what you type here, I'll always return the same JSON object with the same structure!`}
       emoji="🧱"

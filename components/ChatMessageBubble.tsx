@@ -1,4 +1,8 @@
 import { cn } from "@/utils/cn";
+import {
+  EXPERT_KNOWLEDGE_ALL_COMPANY_VALUE,
+  type ExpertKnowledgeEntry,
+} from "@/data/expertKnowledge";
 import type { Message } from "ai/react";
 import { useState } from "react";
 import { Button } from "./ui/button";
@@ -48,13 +52,19 @@ export function ChatMessageBubble(props: {
   message: Message;
   aiEmoji?: string;
   dataSources: any[];
+  appliedExpertKnowledge?: ExpertKnowledgeEntry[];
   onCopy?: (message: Message) => void;
 }) {
   const isThinking =
     props.message.role === "assistant" &&
     props.message.content.trim().length === 0;
   const [isDataSourcesOpen, setIsDataSourcesOpen] = useState(false);
+  const [isExpertKnowledgeOpen, setIsExpertKnowledgeOpen] = useState(false);
   const hasDataSources = !isThinking && props.dataSources && props.dataSources.length > 0;
+  const hasAppliedExpertKnowledge =
+    !isThinking &&
+    props.appliedExpertKnowledge &&
+    props.appliedExpertKnowledge.length > 0;
 
   return (
     <div
@@ -99,7 +109,10 @@ export function ChatMessageBubble(props: {
           type="button"
           variant="ghost"
           size="icon"
-          className="mt-2 h-8 w-8 rounded-full text-muted-foreground"
+          className={cn(
+            "mt-2 h-8 w-8 rounded-full text-muted-foreground",
+            props.message.role !== "user" ? "ml-14" : null,
+          )}
           onClick={() => props.onCopy?.(props.message)}
           aria-label="複製訊息"
           title="複製"
@@ -153,6 +166,65 @@ export function ChatMessageBubble(props: {
                   variant="outline"
                   size="sm"
                   onClick={() => setIsDataSourcesOpen(false)}
+                >
+                  縮小
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {hasAppliedExpertKnowledge ? (
+        <div className="mt-2 w-full rounded-2xl border border-border bg-muted/40 px-3 py-2">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left text-sm"
+            onClick={() => setIsExpertKnowledgeOpen((current) => !current)}
+          >
+            <span className="font-medium">已套用專業分析設定</span>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 text-muted-foreground transition-transform",
+                isExpertKnowledgeOpen ? "rotate-180" : null,
+              )}
+            />
+          </button>
+
+          {isExpertKnowledgeOpen ? (
+            <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+              {props.appliedExpertKnowledge?.map((entry, index) => (
+                <div
+                  key={entry.id}
+                  className="rounded-xl border border-border bg-background/80 px-3 py-2"
+                >
+                  <div className="font-medium text-foreground">
+                    {index + 1}. {entry.title || "未命名專業分析設定"}
+                  </div>
+                  <div className="mt-1">產業：{entry.industry}</div>
+                  <div className="mt-1">
+                    公司：
+                    {entry.companyLabel === EXPERT_KNOWLEDGE_ALL_COMPANY_VALUE
+                      ? "不指定特定公司"
+                      : entry.companyPromptValue || entry.companyLabel}
+                  </div>
+                  {entry.description ? (
+                    <div className="mt-1">錨定點：{entry.description}</div>
+                  ) : null}
+                  {entry.systemPrompt ? (
+                    <div className="mt-1 whitespace-pre-wrap">
+                      專業分析指引：{entry.systemPrompt}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+
+              <div className="flex justify-end pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsExpertKnowledgeOpen(false)}
                 >
                   縮小
                 </Button>

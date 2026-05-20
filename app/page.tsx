@@ -1,5 +1,6 @@
 import { ChatWindow } from "@/components/ChatWindow";
 import { GuideInfoBox } from "@/components/guide/GuideInfoBox";
+import { BACKEND_API_PATHS } from "@/utils/api";
 
 export default function Home() {
   const InfoCard = (
@@ -38,7 +39,7 @@ export default function Home() {
   );
   return (
     <ChatWindow
-      endpoint="api/chat"
+      endpoint={BACKEND_API_PATHS.chat}
       emoji="AI"
       placeholder="請輸入授信調查問題，支援多輪追問，例如：那跟同業比呢？"
       emptyStateComponent={InfoCard}

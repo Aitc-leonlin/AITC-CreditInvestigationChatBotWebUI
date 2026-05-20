@@ -1,5 +1,6 @@
 import { ChatWindow } from "@/components/ChatWindow";
 import { GuideInfoBox } from "@/components/guide/GuideInfoBox";
+import { BACKEND_API_PATHS } from "@/utils/api";
 
 export default function AgentsPage() {
   const InfoCard = (
@@ -62,7 +63,7 @@ export default function AgentsPage() {
 
   return (
     <ChatWindow
-      endpoint="api/chat/agents"
+      endpoint={BACKEND_API_PATHS.chatAgents}
       emptyStateComponent={InfoCard}
       placeholder="Squawk! I'm a conversational agent! Ask me about the current weather in Honolulu!"
       emoji="🦜"

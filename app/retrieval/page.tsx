@@ -1,5 +1,6 @@
 import { ChatWindow } from "@/components/ChatWindow";
 import { GuideInfoBox } from "@/components/guide/GuideInfoBox";
+import { BACKEND_API_PATHS } from "@/utils/api";
 
 export default function AgentsPage() {
   const InfoCard = (
@@ -84,7 +85,7 @@ export default function AgentsPage() {
   );
   return (
     <ChatWindow
-      endpoint="api/chat/retrieval"
+      endpoint={BACKEND_API_PATHS.chatRetrieval}
       emptyStateComponent={InfoCard}
       showIngestForm={true}
       placeholder={
