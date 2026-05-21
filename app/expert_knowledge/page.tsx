@@ -70,14 +70,14 @@ export default function ExpertKnowledgePage() {
     if (!targetEntry) return;
 
     const shouldDelete = window.confirm(
-      `確定要刪除「${targetEntry.companyLabel}」的專業分析指引嗎？`,
+      `確定要刪除「${targetEntry.companyLabel}」的專家指引嗎？`,
     );
     if (!shouldDelete) return;
 
     const nextEntries = entries.filter((entry) => entry.id !== entryId);
     setEntries(nextEntries);
     writeExpertKnowledgeEntries(nextEntries);
-    toast.success("已刪除專業分析指引");
+    toast.success("已刪除專家指引");
   }
 
   const columns: GridColDef<ExpertKnowledgeEntry>[] = [
@@ -221,7 +221,7 @@ export default function ExpertKnowledgePage() {
             type="button"
             variant="ghost"
             size="icon"
-            aria-label={`刪除 ${params.row.companyLabel} 的專業分析指引`}
+            aria-label={`刪除 ${params.row.companyLabel} 的專家指引`}
             onClick={() => handleDelete(params.row.id)}
           >
             <Trash2 className="h-4 w-4" />
@@ -246,7 +246,7 @@ export default function ExpertKnowledgePage() {
                 專家知識庫設定
               </h1>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                以列表方式查看已建立的專業分析指引。若要新增或修改內容，請進入獨立頁面操作。
+                以列表方式查看已建立的專家指引。若要新增或修改內容，請進入獨立頁面操作。
               </p>
             </div>
           </div>
@@ -255,15 +255,19 @@ export default function ExpertKnowledgePage() {
         <section className="rounded-3xl border border-border bg-background p-6 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold">已建立的分析指引</h2>
+              <h2 className="text-lg font-semibold">已建立的專家指引</h2>
               <p className="text-sm text-muted-foreground">
-                每一筆都會對應到特定公司，聊天時可自動套用。可直接在表格中搜尋、排序與管理。
+                與AI助理對話時會根據對話內容自動套用指引分析來進行回答。可直接在表格中搜尋、排序與管理。
               </p>
             </div>
-            <Button type="button" asChild>
+            <Button
+              type="button"
+              asChild
+              className="bg-[#3BA9D8] text-white hover:bg-[#2f95c1]"
+            >
               <Link href="/expert_knowledge/new">
                 <Plus className="h-4 w-4" />
-                新增分析指引
+                新增專家指引
               </Link>
             </Button>
           </div>
@@ -332,7 +336,7 @@ export default function ExpertKnowledgePage() {
                 },
               }}
               localeText={{
-                noRowsLabel: "尚未建立任何專業分析指引。",
+                noRowsLabel: "尚未建立任何專家指引。",
                 noResultsOverlayLabel: "找不到符合條件的資料。",
                 toolbarQuickFilterPlaceholder:
                   "搜尋公司、產業、資料來源、schema key、敘述或指引內容",

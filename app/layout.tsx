@@ -99,7 +99,7 @@ export default function RootLayout({
       <body>
         <NuqsAdapter>
           <div className="bg-secondary grid h-[100dvh] grid-rows-[auto,1fr]">
-            <div className="p-4">
+            <div className="px-4 pt-4 pb-[5px]">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <a href="/" className="flex items-center gap-2">
                   <Logo />

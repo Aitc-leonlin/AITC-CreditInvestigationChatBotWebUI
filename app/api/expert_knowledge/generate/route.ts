@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     const response = await model.invoke([
       new SystemMessage(
-        "你是企業授信調查與風險分析專家。請根據使用者提供的提示，產出一段可直接貼入系統提示詞欄位的繁體中文專業分析指引。請直接輸出內容本身，不要加前言、標題、引號或解釋。",
+        "你是企業授信調查與風險分析專家。請根據使用者提供的提示，產出一段可直接貼入系統提示詞欄位的繁體中文專家指引。請直接輸出內容本身，不要加前言、標題、引號或解釋。",
       ),
       new HumanMessage(prompt),
     ]);

@@ -1,12 +1,32 @@
 import { cn } from "@/utils/cn";
-import {
-  EXPERT_KNOWLEDGE_ALL_COMPANY_VALUE,
-  type ExpertKnowledgeEntry,
-} from "@/data/expertKnowledge";
 import type { Message } from "ai/react";
 import { useState } from "react";
 import { Button } from "./ui/button";
 import { ChevronDown, Copy } from "lucide-react";
+
+export type UsedExpertKnowledge = {
+  title?: string;
+  description?: string;
+  systemPrompt?: string;
+};
+
+function parseContextualUserMessage(content: string) {
+  const [firstLine, ...restLines] = content.split("\n");
+  const questionBody = restLines.join("\n").trim();
+
+  if (
+    !firstLine?.startsWith("根據") ||
+    !firstLine.includes("期間的資訊") ||
+    !questionBody
+  ) {
+    return null;
+  }
+
+  return {
+    contextLine: firstLine.trim(),
+    questionBody,
+  };
+}
 
 function renderBoldMarkdown(content: string) {
   const parts = [];
@@ -52,7 +72,7 @@ export function ChatMessageBubble(props: {
   message: Message;
   aiEmoji?: string;
   dataSources: any[];
-  appliedExpertKnowledge?: ExpertKnowledgeEntry[];
+  appliedExpertKnowledge?: UsedExpertKnowledge[];
   onCopy?: (message: Message) => void;
 }) {
   const isThinking =
@@ -65,6 +85,10 @@ export function ChatMessageBubble(props: {
     !isThinking &&
     props.appliedExpertKnowledge &&
     props.appliedExpertKnowledge.length > 0;
+  const contextualUserMessage =
+    props.message.role === "user"
+      ? parseContextualUserMessage(props.message.content)
+      : null;
 
   return (
     <div
@@ -97,10 +121,14 @@ export function ChatMessageBubble(props: {
               <span className="loading-dot [animation-delay:0.2s]" />
               <span className="loading-dot [animation-delay:0.4s]" />
             </div>
+          ) : contextualUserMessage ? (
+            <div className="flex flex-col gap-2">
+              <div>{renderBoldMarkdown(contextualUserMessage.contextLine)}</div>
+              <div>{renderBoldMarkdown(contextualUserMessage.questionBody)}</div>
+            </div>
           ) : (
             <span>{renderBoldMarkdown(props.message.content)}</span>
           )}
-
         </div>
       </div>
 
@@ -122,7 +150,7 @@ export function ChatMessageBubble(props: {
       ) : null}
 
       {hasDataSources ? (
-        <div className="mt-2 w-full rounded-2xl border border-border bg-muted/40 px-3 py-2">
+        <div className="mt-2 w-full rounded-2xl border border-sky-300 bg-sky-100 px-3 py-2 text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">
           <button
             type="button"
             className="flex w-full items-center justify-between gap-3 text-left text-sm"
@@ -131,20 +159,20 @@ export function ChatMessageBubble(props: {
             <span className="font-medium">數據來源標註</span>
             <ChevronDown
               className={cn(
-                "h-4 w-4 text-muted-foreground transition-transform",
+                "h-4 w-4 transition-transform",
                 isDataSourcesOpen ? "rotate-180" : null,
               )}
             />
           </button>
 
           {isDataSourcesOpen ? (
-            <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+            <div className="mt-3 space-y-2 text-xs">
               {props.dataSources.map((source, index) => (
                 <div
                   key={`data-source-${index}`}
-                  className="rounded-xl border border-border bg-background/80 px-3 py-2"
+                  className="rounded-xl border border-sky-200 bg-white/80 px-3 py-2 dark:border-sky-900 dark:bg-sky-950/50"
                 >
-                  <div className="font-medium text-foreground">
+                  <div className="font-medium">
                     {index + 1}. {source.title ?? source.name ?? source.label ?? "資料來源"}
                   </div>
                   {source.content ?? source.pageContent ? (
@@ -176,7 +204,7 @@ export function ChatMessageBubble(props: {
       ) : null}
 
       {hasAppliedExpertKnowledge ? (
-        <div className="mt-2 w-full rounded-2xl border border-border bg-muted/40 px-3 py-2">
+        <div className="mt-2 w-full rounded-2xl border border-emerald-300 bg-emerald-100 px-3 py-2 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100">
           <button
             type="button"
             className="flex w-full items-center justify-between gap-3 text-left text-sm"
@@ -185,35 +213,25 @@ export function ChatMessageBubble(props: {
             <span className="font-medium">已套用專業分析設定</span>
             <ChevronDown
               className={cn(
-                "h-4 w-4 text-muted-foreground transition-transform",
+                "h-4 w-4 transition-transform",
                 isExpertKnowledgeOpen ? "rotate-180" : null,
               )}
             />
           </button>
 
           {isExpertKnowledgeOpen ? (
-            <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+            <div className="mt-3 space-y-2 text-xs">
               {props.appliedExpertKnowledge?.map((entry, index) => (
                 <div
-                  key={entry.id}
-                  className="rounded-xl border border-border bg-background/80 px-3 py-2"
+                  key={`${entry.title ?? "expert-knowledge"}-${index}`}
+                  className="rounded-xl border border-emerald-200 bg-white/80 px-3 py-2 dark:border-emerald-900 dark:bg-emerald-950/50"
                 >
-                  <div className="font-medium text-foreground">
+                  <div className="font-medium">
                     {index + 1}. {entry.title || "未命名專業分析設定"}
                   </div>
-                  <div className="mt-1">產業：{entry.industry}</div>
-                  <div className="mt-1">
-                    公司：
-                    {entry.companyLabel === EXPERT_KNOWLEDGE_ALL_COMPANY_VALUE
-                      ? "不指定特定公司"
-                      : entry.companyPromptValue || entry.companyLabel}
-                  </div>
-                  {entry.description ? (
-                    <div className="mt-1">錨定點：{entry.description}</div>
-                  ) : null}
                   {entry.systemPrompt ? (
                     <div className="mt-1 whitespace-pre-wrap">
-                      專業分析指引：{entry.systemPrompt}
+                      專家指引：{entry.systemPrompt}
                     </div>
                   ) : null}
                 </div>

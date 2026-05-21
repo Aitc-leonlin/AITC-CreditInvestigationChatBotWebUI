@@ -41,7 +41,7 @@ export default function Home() {
     <ChatWindow
       endpoint={BACKEND_API_PATHS.chat}
       emoji="AI"
-      placeholder="請輸入授信調查問題，支援多輪追問，例如：那跟同業比呢？"
+      placeholder="請輸入授信調查問題"
       emptyStateComponent={InfoCard}
       presetQuestions={[
         "現金水位是否充足？",

@@ -10,14 +10,16 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
-  History,
   MessageSquarePlus,
   Paperclip,
   Settings,
   Square,
 } from "lucide-react";
+import HistoryEduIcon from "@mui/icons-material/HistoryEdu";
+import CleaningServicesIcon from "@mui/icons-material/CleaningServices";
 
 import { ChatMessageBubble } from "@/components/ChatMessageBubble";
+import type { UsedExpertKnowledge } from "@/components/ChatMessageBubble";
 import { IntermediateStep } from "./IntermediateStep";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -32,11 +34,14 @@ import {
 } from "./ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { cn } from "@/utils/cn";
-import { COMPANY_OPTIONS, getCompanyPromptValue } from "@/data/companyKnowledge";
+import {
+  COMPANY_OPTIONS,
+  getCompanyByLabel,
+  getCompanyPromptValue,
+} from "@/data/companyKnowledge";
 import {
   type ExpertKnowledgeEntry,
   resolveAppliedExpertKnowledgeEntries,
-  resolveExpertKnowledgeEntry,
 } from "@/data/expertKnowledge";
 import { buildBackendApiUrl } from "@/utils/api";
 
@@ -101,7 +106,7 @@ function formatQuestionWithContext(question: string, settings: ChatSettings) {
   const period = getPeriodPromptValue(settings);
   if (!company && !period) return trimmedQuestion;
   if (!company || !period) return trimmedQuestion;
-  return `${company} ${period}${trimmedQuestion}`;
+  return `根據${company}在${period}期間的資訊\n${trimmedQuestion}`;
 }
 
 function getSelectedConditionSummary(settings: ChatSettings) {
@@ -147,7 +152,17 @@ function parseBase64JsonHeader<T>(value: string): T {
 function buildSessionTitle(messages: Message[]) {
   const firstUserMessage = messages.find((message) => message.role === "user");
   if (!firstUserMessage?.content) return "新對話";
-  return firstUserMessage.content.slice(0, 24);
+  const contentLines = firstUserMessage.content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const preferredTitle =
+    contentLines.length > 1 &&
+    contentLines[0].startsWith("根據") &&
+    contentLines[0].includes("期間的資訊")
+      ? contentLines[1]
+      : firstUserMessage.content;
+  return preferredTitle.slice(0, 24);
 }
 
 function createEmptySession(): ChatSession {
@@ -225,7 +240,7 @@ function ChatMessages(props: {
   emptyStateComponent: ReactNode;
   presetQuestions?: string[];
   dataSourcesForMessages: Record<string, any[]>;
-  expertKnowledgeForMessages: Record<string, ExpertKnowledgeEntry[]>;
+  expertKnowledgeForMessages: Record<string, UsedExpertKnowledge[]>;
   aiEmoji?: string;
   className?: string;
   onCopyMessage: (message: Message) => void;
@@ -629,7 +644,7 @@ function SettingsPanel(props: {
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm leading-6 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100">
           <div className="font-semibold">查詢設定說明</div>
           <div className="mt-1">
-            若已選擇公司與區間，送出對話時系統會自動將公司與時間加到問題前綴，再發送至AI Agent。
+            若已選擇公司與區間，送出對話時系統會自動將公司與時間組成查詢前言，並在下一行接續原始問題，再發送至 AI Agent。
           </div>
           <div className="mt-2 rounded-md bg-white/70 px-2 py-2 text-xs leading-6 dark:bg-black/20">
             範例：
@@ -640,7 +655,9 @@ function SettingsPanel(props: {
             <br />
             會送出成
             <br />
-            「臺灣水泥股份有限公司(1101.TW) 2024年度獲利能力與負債結構是否有風險？」
+            「根據臺灣水泥股份有限公司(1101.TW)在2024年度期間的資訊
+            <br />
+            獲利能力與負債結構是否有風險？」
           </div>
         </div>
 
@@ -686,7 +703,7 @@ export function ChatWindow(props: {
     Record<string, any[]>
   >({});
   const [expertKnowledgeForMessages, setExpertKnowledgeForMessages] = useState<
-    Record<string, ExpertKnowledgeEntry[]>
+    Record<string, UsedExpertKnowledge[]>
   >({});
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [draftSession, setDraftSession] = useState<ChatSession | null>(null);
@@ -773,8 +790,8 @@ export function ChatWindow(props: {
 
   const activeMessages = activeSession?.messages ?? [];
   const selectedConditionSummary = getSelectedConditionSummary(settings);
-  const expertKnowledgeEntry = useMemo(
-    () => resolveExpertKnowledgeEntry(settings.company),
+  const selectedCompany = useMemo(
+    () => getCompanyByLabel(settings.company),
     [settings.company],
   );
   const openSidePanelsCount = Number(isHistoryPanelOpen) + Number(isSettingsPanelOpen);
@@ -869,6 +886,31 @@ export function ChatWindow(props: {
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    const appliedExpertKnowledgeEntries = resolveAppliedExpertKnowledgeEntries();
+    const appliedExpertKnowledgePayload = appliedExpertKnowledgeEntries
+      .map((entry) => ({
+        title: entry.title?.trim?.() ?? "",
+        dataSource: entry.dataSource?.trim?.() ?? "",
+        industry: entry.industry?.trim?.() ?? "",
+        companyLabel: entry.companyLabel?.trim?.() ?? "",
+        description: entry.description?.trim?.() ?? "",
+        systemPrompt: entry.systemPrompt?.trim?.() ?? "",
+      }))
+      .filter(
+        (entry) =>
+          entry.title ||
+          entry.dataSource ||
+          entry.industry ||
+          entry.companyLabel ||
+          entry.description ||
+          entry.systemPrompt,
+      );
+
+    console.log("[ChatWindow][appliedExpertKnowledge] entries", appliedExpertKnowledgeEntries);
+    console.log(
+      "[ChatWindow][appliedExpertKnowledge] payload",
+      appliedExpertKnowledgePayload,
+    );
 
     try {
       // 將完整聊天內容送到後端聊天服務，並把串流回應即時顯示在前端。
@@ -885,8 +927,7 @@ export function ChatWindow(props: {
           conversationId: activeSessionId,
           messages: requestMessages,
           settings,
-          customSystemPrompt: expertKnowledgeEntry?.systemPrompt ?? "",
-          expertKnowledge: expertKnowledgeEntry,
+          appliedExpertKnowledge: appliedExpertKnowledgePayload,
           show_intermediate_steps: showIntermediateSteps,
         }),
         signal: controller.signal,
@@ -916,15 +957,29 @@ export function ChatWindow(props: {
               ? json.message
               : JSON.stringify(json);
         const dataSources = Array.isArray(json?.data_sources) ? json.data_sources : [];
+        const usedExpertKnowledge = Array.isArray(json?.usedExpertKnowledge)
+          ? json.usedExpertKnowledge
+              .map((entry: any) => ({
+                title: typeof entry?.title === "string" ? entry.title : "",
+                description:
+                  typeof entry?.description === "string" ? entry.description : "",
+                systemPrompt:
+                  typeof entry?.systemPrompt === "string" ? entry.systemPrompt : "",
+              }))
+              .filter(
+                (entry: UsedExpertKnowledge) =>
+                  entry.title || entry.description || entry.systemPrompt,
+              )
+          : [];
 
         if (!dataSourcesHeader && dataSources.length > 0) {
           setDataSourcesForMessages({
             [assistantMessageId]: dataSources,
           });
         }
-          setExpertKnowledgeForMessages({
-            [assistantMessageId]: resolveAppliedExpertKnowledgeEntries(),
-          });
+        setExpertKnowledgeForMessages({
+          [assistantMessageId]: usedExpertKnowledge,
+        });
 
         const finalMessages = requestMessages.concat({
           id: assistantMessageId,
@@ -958,9 +1013,6 @@ export function ChatWindow(props: {
         id: assistantMessageId,
         role: "assistant",
         content: assistantContent,
-      });
-      setExpertKnowledgeForMessages({
-        [assistantMessageId]: resolveAppliedExpertKnowledgeEntries(),
       });
       replaceActiveSession(finalMessages);
     } catch (error: any) {
@@ -1051,7 +1103,7 @@ export function ChatWindow(props: {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="border-b border-border px-4 py-3">
+        <div className="border-b border-border px-4 py-3 lg:pl-0">
           <div
             className={cn(
               "mx-auto flex items-center justify-between gap-3 transition-[max-width] duration-300",
@@ -1059,30 +1111,32 @@ export function ChatWindow(props: {
             )}
           >
             <div className="flex items-center gap-3">
-              {!isHistoryPanelOpen ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="hidden lg:inline-flex"
-                  onClick={() => setIsHistoryPanelOpen(true)}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                  歷史對話
-                </Button>
-              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={cn(
+                  "hidden lg:inline-flex",
+                  isHistoryPanelOpen
+                    ? "border-slate-300 bg-slate-100 text-slate-500 hover:bg-slate-100 hover:text-slate-500"
+                    : null,
+                )}
+                onClick={() => setIsHistoryPanelOpen((current) => !current)}
+                aria-label={isHistoryPanelOpen ? "收合歷史對話" : "展開歷史對話"}
+                title={isHistoryPanelOpen ? "收合歷史對話" : "展開歷史對話"}
+              >
+                <HistoryEduIcon sx={{ fontSize: 20 }} />
+                歷史對話
+              </Button>
 
               <div>
                 <div className="text-sm font-semibold">AITC Credit Investigation Chatbot</div>
-                <div className="text-xs text-muted-foreground">
-                  支援多輪對話、停止生成、複製與歷史紀錄
-                </div>
-                <div className="mt-2 inline-flex rounded-full border border-sky-300 bg-sky-100 px-3 py-1 text-xs font-medium text-sky-900 shadow-sm dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">
+                <div className="mt-2 mr-[10px] inline-flex rounded-full border border-sky-300 bg-sky-100 px-3 py-1 text-xs font-medium text-sky-900 shadow-sm dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">
                   {selectedConditionSummary}
                 </div>
-                {expertKnowledgeEntry ? (
+                {selectedCompany?.industry ? (
                   <div className="mt-2 inline-flex rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-900 shadow-sm dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-100">
-                    已套用專業分析設定：{expertKnowledgeEntry.industry}
+                    已套用專業分析產業：{selectedCompany.industry}
                   </div>
                 ) : null}
               </div>
@@ -1092,7 +1146,7 @@ export function ChatWindow(props: {
               <Dialog>
                 <DialogTrigger asChild>
                   <Button type="button" variant="outline" size="sm" className="lg:hidden">
-                    <History className="h-4 w-4" />
+                    <HistoryEduIcon sx={{ fontSize: 16 }} />
                     歷史紀錄
                   </Button>
                 </DialogTrigger>
@@ -1119,6 +1173,7 @@ export function ChatWindow(props: {
                 size="sm"
                 onClick={clearCompanyConditions}
               >
+                <CleaningServicesIcon sx={{ fontSize: 16 }} />
                 清除公司條件
               </Button>
 
@@ -1135,11 +1190,17 @@ export function ChatWindow(props: {
               <Button
                 type="button"
                 variant="outline"
-                size="icon"
-                className="hidden lg:inline-flex"
+                size="sm"
+                className={cn(
+                  "hidden lg:inline-flex",
+                  isSettingsPanelOpen
+                    ? "border-slate-300 bg-slate-100 text-slate-500 hover:bg-slate-100 hover:text-slate-500"
+                    : null,
+                )}
                 onClick={() => setIsSettingsPanelOpen((current) => !current)}
               >
                 <Settings className="h-4 w-4" />
+                查詢設定
               </Button>
 
               <Dialog>

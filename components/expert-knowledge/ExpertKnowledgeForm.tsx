@@ -166,7 +166,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
       (entry) => entry.id === props.entryId,
     );
     if (!selectedEntry) {
-      toast.error("找不到這筆分析指引");
+      toast.error("找不到這筆專家指引");
       router.replace("/expert_knowledge");
       return;
     }
@@ -323,7 +323,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
     }
 
     if (!trimmedPrompt) {
-      toast.error("請輸入專業分析指引");
+      toast.error("請輸入專家指引");
       return;
     }
 
@@ -352,7 +352,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
 
     persistEntries(nextEntries);
     setShowValidationErrors(false);
-    toast.success(selectedEntry ? "已更新專業分析指引" : "已新增專業分析指引");
+    toast.success(selectedEntry ? "已更新專家指引" : "已新增專家指引");
     router.push("/expert_knowledge");
     router.refresh();
   }
@@ -423,7 +423,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
 
     try {
       setIsSystemPromptGenerating(true);
-      // 將使用者輸入的 prompt 送到後端，產生專業分析指引內容。
+      // 將使用者輸入的 prompt 送到後端，產生專家指引內容。
       const response = await fetch(
         buildBackendApiUrl(BACKEND_API_PATHS.expertKnowledgeGenerateAnalysis),
         {
@@ -448,7 +448,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
       }
 
       setSystemPrompt(json.response.trim());
-      toast.success("已產生專業分析指引");
+      toast.success("已產生專家指引");
       setIsSystemPromptGenerateModalOpen(false);
     } catch (error) {
       toast.error(
@@ -473,7 +473,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
                 EXPERT KNOWLEDGE BASE
               </div>
               <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900">
-                {selectedEntry ? "編輯專業分析指引" : "新增專業分析指引"}
+                {selectedEntry ? "編輯專家指引" : "新增專家指引"}
               </h1>
               <p className="mt-3 text-sm leading-7 text-slate-600">
                 依據現有公司清單與產業分類，設定該公司在聊天時要優先採用的分析角度與回答方式。
@@ -523,7 +523,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
                   </Typography>
                   <Typography
                     variant="h6"
-                    sx={{ fontWeight: 700, color: "#0f172a", lineHeight: 1.2 }}
+                    sx={{ fontWeight: 700, color: "#2D689D", lineHeight: 1.2 }}
                   >
                     {title || "尚未輸入標題"}
                   </Typography>
@@ -617,7 +617,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
             <Input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="例如：水泥產業的原物料成本分析指引(台泥)"
+              placeholder="例如：水泥產業的原物料成本專家指引(台泥)"
               className={`h-11 rounded-xl ${showValidationErrors && !title.trim() ? REQUIRED_FIELD_ERROR_CLASS : ""}`}
             />
             <div className="flex items-start gap-2 text-xs leading-6 text-muted-foreground">
@@ -727,7 +727,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
           <div className="mt-5 space-y-2">
             <div className="flex items-center justify-between gap-3">
               <label className="flex items-center gap-2 text-sm font-medium text-foreground">
-                專業分析指引<span className="text-orange-600"> *</span>
+                專家指引<span className="text-orange-600"> *</span>
                 <DiamondIcon sx={{ fontSize: 18, color: "#000000" }} />
               </label>
               <Button
@@ -753,12 +753,12 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
             </div>
           </div>
 
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Button type="button" onClick={handleSave}>
-              {selectedEntry ? "儲存變更" : "建立分析指引"}
-            </Button>
+          <div className="mt-5 flex flex-wrap justify-end gap-3">
             <Button type="button" variant="outline" asChild>
               <Link href="/expert_knowledge">取消</Link>
+            </Button>
+            <Button type="button" onClick={handleSave}>
+              {selectedEntry ? "儲存變更" : "建立專家指引"}
             </Button>
           </div>
         </section>
@@ -829,9 +829,9 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>AI 產生專業分析指引</DialogTitle>
+            <DialogTitle>AI 產生專家指引</DialogTitle>
             <DialogDescription>
-              輸入你希望 AI 依據的提示內容，送出後會自動產生並填入下方的專業分析指引欄位。
+              輸入你希望 AI 依據的提示內容，送出後會自動產生並填入下方的專家指引欄位。
             </DialogDescription>
           </DialogHeader>
 
@@ -844,7 +844,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
               onChange={(event) =>
                 setSystemPromptGeneratePrompt(event.target.value)
               }
-              placeholder="例如：請根據企業授信審查情境，產出一段可直接作為回答規則的專業分析指引。"
+              placeholder="例如：請根據企業授信審查情境，產出一段可直接作為回答規則的專家指引。"
               className="min-h-[180px] resize-y rounded-2xl"
               disabled={isSystemPromptGenerating}
             />
