@@ -4,9 +4,9 @@ import { cn } from "@/utils/cn";
 import { usePathname } from "next/navigation";
 import { ReactNode, useState } from "react";
 import Link from "next/link";
-import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import PsychologyAltIcon from "@mui/icons-material/PsychologyAlt";
 import FunctionsIcon from "@mui/icons-material/Functions";
+import { Bot, Database, FileText, Home } from "lucide-react";
 import {
   METRIC_FORMULA_CATEGORIES,
   getMetricFormulaCategoryLabel,
@@ -28,7 +28,9 @@ export const ActiveLink = (props: {
   icon: ReactNode;
 }) => {
   const pathname = usePathname();
-  const isActive = pathname === props.href;
+  const isActive =
+    pathname === props.href ||
+    (props.href !== "/" && pathname.startsWith(`${props.href}/`));
   return (
     <Link
       href={props.href}
@@ -186,22 +188,49 @@ function FormulaHelperDialog() {
 }
 
 export function Navbar() {
+  const pathname = usePathname();
+  const isReportGeneratorSection = pathname.startsWith("/report-generator");
+  const isChatbotSection =
+    pathname.startsWith("/chatbot") ||
+    pathname.startsWith("/expert-knowledge") ||
+    pathname.startsWith("/external-knowledge");
+
+  if (pathname === "/") return null;
+
   return (
     <nav>
       <div className="flex flex-wrap items-center gap-2 rounded-full border border-[#d6e8f4] bg-[#f8fcff] p-1.5">
-        <ActiveLink
-          href="/"
-          icon={<AutoAwesomeIcon sx={{ fontSize: 18 }} />}
-        >
-          授信AI助理
-        </ActiveLink>
-        <ActiveLink
-          href="/expert_knowledge"
-          icon={<PsychologyAltIcon sx={{ fontSize: 18 }} />}
-        >
-          專家知識庫
-        </ActiveLink>
-        <FormulaHelperDialog />
+        {isChatbotSection ? (
+          <>
+            <ActiveLink
+              href="/chatbot"
+              icon={<Bot className="h-[18px] w-[18px]" />}
+            >
+              AI Chat Bot
+            </ActiveLink>
+            <ActiveLink
+              href="/expert-knowledge"
+              icon={<PsychologyAltIcon sx={{ fontSize: 18 }} />}
+            >
+              專家知識庫
+            </ActiveLink>
+            <ActiveLink
+              href="/external-knowledge"
+              icon={<Database className="h-[18px] w-[18px]" />}
+            >
+              資料倉儲
+            </ActiveLink>
+            <FormulaHelperDialog />
+          </>
+        ) : null}
+        {isReportGeneratorSection ? (
+          <ActiveLink
+            href="/report-generator"
+            icon={<FileText className="h-[18px] w-[18px]" />}
+          >
+            徵審報告產生器
+          </ActiveLink>
+        ) : null}
       </div>
     </nav>
   );

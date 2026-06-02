@@ -15,15 +15,16 @@ export function buildApiUrl(path: string, baseUrl?: string) {
 export const BACKEND_API_BASE_URL = "http://localhost:3001";
 
 export const BACKEND_API_PATHS = {
-  chat: "/chatbot",
+  chat: "/api/chatbot",
+  chatWithExternal: "/api/chatbot-with-external",
   chatAgents: "/api/chat/agents",
   chatRetrieval: "/api/chat/retrieval",
-  chatRetrievalAgents: "/api/chat/retrieval_agents",
-  chatStructuredOutput: "/api/chat/structured_output",
+  chatRetrievalAgents: "/api/chat/retrieval-agents",
+  chatStructuredOutput: "/api/chat/structured-output",
   retrievalIngest: "/api/retrieval/ingest",
-  expertKnowledgeGenerateAnchor: "/api/expert_knowledge/generate_anchor",
+  expertKnowledgeGenerateAnchor: "/api/expert-knowledge/generate-anchor",
   expertKnowledgeGenerateAnalysis:
-    "/api/expert_knowledge/generate_analysis",
+    "/api/expert-knowledge/generate-analysis",
 } as const;
 
 export function buildBackendApiUrl(path: string) {

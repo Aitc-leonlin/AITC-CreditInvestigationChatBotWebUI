@@ -7,10 +7,10 @@ This template scaffolds a LangChain.js + Next.js starter app. It showcases how t
 use cases. Specifically:
 
 - [Simple chat](/app/api/chat/route.ts)
-- [Returning structured output from an LLM call](/app/api/chat/structured_output/route.ts)
+- [Returning structured output from an LLM call](/app/api/chat/structured-output/route.ts)
 - [Answering complex, multi-step questions with agents](/app/api/chat/agents/route.ts)
 - [Retrieval augmented generation (RAG) with a chain and a vector store](/app/api/chat/retrieval/route.ts)
-- [Retrieval augmented generation (RAG) with an agent and a vector store](/app/api/chat/retrieval_agents/route.ts)
+- [Retrieval augmented generation (RAG) with an agent and a vector store](/app/api/chat/retrieval-agents/route.ts)
 
 Most of them use Vercel's [AI SDK](https://github.com/vercel-labs/ai) to stream tokens to the client and display the incoming messages.
 
@@ -57,7 +57,7 @@ Click the `Structured Output` link in the navbar to try it out:
 The chain in this example uses a [popular library called Zod](https://zod.dev) to construct a schema, then formats it in the way OpenAI expects.
 It then passes that schema as a function into OpenAI and passes a `function_call` parameter to force OpenAI to return arguments in the specified format.
 
-For more details, [check out this documentation page](https://js.langchain.com/docs/how_to/structured_output).
+For more details, [check out this documentation page](https://js.langchain.com/docs/how_to/structured-output).
 
 ## 🦜 Agents
 
@@ -74,7 +74,7 @@ This example uses a [prebuilt LangGraph agent](https://langchain-ai.github.io/la
 
 The retrieval examples both use Supabase as a vector store. However, you can swap in
 [another supported vector store](https://js.langchain.com/docs/integrations/vectorstores) if preferred by changing
-the code under `app/api/retrieval/ingest/route.ts`, `app/api/chat/retrieval/route.ts`, and `app/api/chat/retrieval_agents/route.ts`.
+the code under `app/api/retrieval/ingest/route.ts`, `app/api/chat/retrieval/route.ts`, and `app/api/chat/retrieval-agents/route.ts`.
 
 For Supabase, follow [these instructions](https://js.langchain.com/docs/integrations/vectorstores/supabase) to set up your
 database, then get your database URL and private key and paste them into `.env.local`.

@@ -18,6 +18,7 @@ import HealthAndSafetyIcon from "@mui/icons-material/HealthAndSafety";
 import LocalMallIcon from "@mui/icons-material/LocalMall";
 import MemoryIcon from "@mui/icons-material/Memory";
 import PrecisionManufacturingIcon from "@mui/icons-material/PrecisionManufacturing";
+import PsychologyAltIcon from "@mui/icons-material/PsychologyAlt";
 import SettingsInputAntennaIcon from "@mui/icons-material/SettingsInputAntenna";
 import StorefrontIcon from "@mui/icons-material/Storefront";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
@@ -130,6 +131,25 @@ function createId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function RunningGenerateIndicator() {
+  return (
+    <span
+      className="running-generate-indicator"
+      aria-label="AI 產生中"
+      role="status"
+    >
+      <span className="running-person">
+        <span className="running-person__head" />
+        <span className="running-person__body" />
+        <span className="running-person__arm running-person__arm--front" />
+        <span className="running-person__arm running-person__arm--back" />
+        <span className="running-person__leg running-person__leg--front" />
+        <span className="running-person__leg running-person__leg--back" />
+      </span>
+    </span>
+  );
+}
+
 export function ExpertKnowledgeForm(props: { entryId?: string }) {
   const router = useRouter();
   const [entries, setEntries] = useState<ExpertKnowledgeEntry[]>([]);
@@ -139,7 +159,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
   );
   const [industry, setIndustry] = useState("");
   const [companyLabel, setCompanyLabel] = useState("");
-  const [description, setDescription] = useState("");
+  const [anchorDescription, setAnchorDescription] = useState("");
   const [systemPrompt, setSystemPrompt] = useState("");
   const [isReady, setIsReady] = useState(!props.entryId);
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false);
@@ -167,7 +187,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
     );
     if (!selectedEntry) {
       toast.error("找不到這筆專家指引");
-      router.replace("/expert_knowledge");
+      router.replace("/expert-knowledge");
       return;
     }
 
@@ -188,7 +208,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
     setDataSource(
       selectedEntry.dataSource ?? DEFAULT_EXPERT_KNOWLEDGE_DATA_SOURCE,
     );
-    setDescription(selectedEntry.description ?? "");
+    setAnchorDescription(selectedEntry.anchorDescription ?? "");
     setSystemPrompt(selectedEntry.systemPrompt);
     setGeneratePrompt("");
     setSystemPromptGeneratePrompt("");
@@ -281,7 +301,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
         : companyLabel;
     const company = getCompanyByLabel(normalizedCompanyLabel);
     const trimmedTitle = title.trim();
-    const trimmedDescription = description.trim();
+    const trimmedAnchorDescription = anchorDescription.trim();
     const trimmedPrompt = systemPrompt.trim();
     const hasCompanySelection =
       companyLabel === NO_COMPANY_VALUE || Boolean(normalizedCompanyLabel);
@@ -317,7 +337,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
       return;
     }
 
-    if (!trimmedDescription) {
+    if (!trimmedAnchorDescription) {
       toast.error("請輸入錨定點");
       return;
     }
@@ -339,7 +359,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
         company?.industry ?? industry,
         company?.label ?? EXPERT_KNOWLEDGE_ALL_COMPANY_VALUE,
       ),
-      description: trimmedDescription,
+      anchorDescription: trimmedAnchorDescription,
       systemPrompt: trimmedPrompt,
       updatedAt: new Date().toISOString(),
     };
@@ -353,7 +373,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
     persistEntries(nextEntries);
     setShowValidationErrors(false);
     toast.success(selectedEntry ? "已更新專家指引" : "已新增專家指引");
-    router.push("/expert_knowledge");
+    router.push("/expert-knowledge");
     router.refresh();
   }
 
@@ -401,7 +421,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
         throw new Error("AI 沒有回傳可用內容");
       }
 
-      setDescription(json.response.trim());
+      setAnchorDescription(json.response.trim());
       toast.success("已產生錨定點內容");
       setIsGenerateModalOpen(false);
     } catch (error) {
@@ -466,7 +486,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
   return (
     <div className="h-full overflow-y-auto">
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6 md:px-6">
-        <section className="rounded-3xl border border-border bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-6 shadow-sm">
+        <section className="overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
               <div className="text-sm font-semibold tracking-[0.2em] text-sky-700">
@@ -481,11 +501,14 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
             </div>
 
             <Button type="button" variant="outline" asChild>
-              <Link href="/expert_knowledge">
+              <Link href="/expert-knowledge">
                 <ArrowLeft className="h-4 w-4" />
                 返回列表
               </Link>
             </Button>
+            <div className="pointer-events-none ml-auto hidden flex-1 justify-end text-[#57A6D4]/25 md:flex">
+              <PsychologyAltIcon sx={{ fontSize: "clamp(112px, 14vw, 180px)" }} />
+            </div>
           </div>
         </section>
 
@@ -711,10 +734,10 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
               </Button>
             </div>
             <Textarea
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
+              value={anchorDescription}
+              onChange={(event) => setAnchorDescription(event.target.value)}
               placeholder="例如：當使用者詢問半導體產業授信風險、晶圓代工景氣循環、庫存調整與資本支出壓力時優先使用。"
-              className={`min-h-[120px] resize-y rounded-2xl ${showValidationErrors && !description.trim() ? REQUIRED_FIELD_ERROR_CLASS : ""}`}
+              className={`min-h-[120px] resize-y rounded-2xl ${showValidationErrors && !anchorDescription.trim() ? REQUIRED_FIELD_ERROR_CLASS : ""}`}
             />
             <div className="flex items-start gap-2 text-xs leading-6 text-muted-foreground">
               <AnnouncementIcon sx={{ mt: "1px", fontSize: 16, color: "#64748b" }} />
@@ -755,7 +778,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
 
           <div className="mt-5 flex flex-wrap justify-end gap-3">
             <Button type="button" variant="outline" asChild>
-              <Link href="/expert_knowledge">取消</Link>
+              <Link href="/expert-knowledge">取消</Link>
             </Button>
             <Button type="button" onClick={handleSave}>
               {selectedEntry ? "儲存變更" : "建立專家指引"}
@@ -812,6 +835,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
             >
               {isGenerating ? "產生中..." : "送出"}
             </Button>
+            {isGenerating ? <RunningGenerateIndicator /> : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -866,6 +890,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
             >
               {isSystemPromptGenerating ? "產生中..." : "送出"}
             </Button>
+            {isSystemPromptGenerating ? <RunningGenerateIndicator /> : null}
           </DialogFooter>
         </DialogContent>
       </Dialog>

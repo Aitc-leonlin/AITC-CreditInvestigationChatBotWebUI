@@ -17,11 +17,20 @@ const EXTERNAL_CHAT_API_CHAT_PATH =
 const EXTERNAL_CHAT_API_TIMEOUT_MS = Number(
   process.env.CHATBOT_API_TIMEOUT_MS ?? "180000",
 );
-const DATA_SOURCES_HEADER = "x-data-sources";
 
 const formatMessage = (message: VercelChatMessage) => {
   return `${message.role}: ${message.content}`;
 };
+
+function getArrayField(value: any, fieldNames: string[]) {
+  for (const fieldName of fieldNames) {
+    if (Array.isArray(value?.[fieldName])) {
+      return value[fieldName];
+    }
+  }
+
+  return [];
+}
 
 const TEMPLATE = `你是 AITC 的授信調查分析助理。請依照使用者問題提供條理清楚、專業且精簡的繁體中文分析。
 若使用者是延續追問，例如「那跟同業比呢？」、「再細一點」或「上一題的風險在哪？」，
@@ -56,25 +65,76 @@ function getPeriodLabel(settings: any) {
   return settings.period;
 }
 
-async function proxyToBackend(body: any) {
+async function proxyToBackend(
+  body: any,
+  options?: { includeExternalDataRequest?: boolean },
+) {
   if (!EXTERNAL_CHAT_API_BASE_URL) return null;
 
   const messages = body.messages ?? [];
   const currentMessageContent =
-    messages[messages.length - 1]?.content?.toString() ?? "";
+    body.question?.toString?.() ??
+    messages[messages.length - 1]?.content?.toString() ??
+    "";
   const settings = body.settings ?? {};
+  const referenceSettings = {
+    useExpertKnowledge:
+      typeof body.referenceSettings?.useExpertKnowledge === "boolean"
+        ? body.referenceSettings.useExpertKnowledge
+        : typeof body.useExpertKnowledge === "boolean"
+          ? body.useExpertKnowledge
+          : Boolean(settings.useExpertKnowledge),
+    useWarehouseData:
+      typeof body.referenceSettings?.useWarehouseData === "boolean"
+        ? body.referenceSettings.useWarehouseData
+        : typeof body.useWarehouseData === "boolean"
+          ? body.useWarehouseData
+          : Boolean(settings.useWarehouseData),
+    useExternalData:
+      typeof body.referenceSettings?.useExternalData === "boolean"
+        ? body.referenceSettings.useExternalData
+        : typeof body.useExternalData === "boolean"
+          ? body.useExternalData
+          : Boolean(settings.useExternalData),
+  };
+  const includeExternalDataRequest =
+    options?.includeExternalDataRequest ||
+    "externalDataDecision" in body ||
+    "externalDataQueryText" in body;
   const backendPayload = {
-    question: currentMessageContent,
-    company: settings.company ?? "",
-    period: getPeriodLabel(settings),
-    settings,
-    customSystemPrompt: body.customSystemPrompt ?? "",
-    expertKnowledge: body.expertKnowledge ?? null,
+    appliedExpertKnowledge:
+      body.appliedExpertKnowledge ?? body.expertKnowledge ?? [],
+    appliedWarehouseData:
+      body.appliedWarehouseData ?? body.warehouseData ?? [],
+    company: body.company ?? settings.company ?? "",
     conversationId: body.conversationId ?? "",
-    messages,
+    ...(includeExternalDataRequest
+      ? {
+          appliedExternalData: Array.isArray(body.appliedExternalData)
+            ? body.appliedExternalData
+            : [],
+          externalDataDecision: body.externalDataDecision ?? "adopted",
+          externalDataQueryText: body.externalDataQueryText ?? "",
+        }
+      : {}),
+    messages: messages.map((message: any) => ({
+      content: message?.content?.toString?.() ?? "",
+      role: message?.role ?? "user",
+    })),
+    period: body.period ?? getPeriodLabel(settings),
+    question: currentMessageContent,
+    referenceSettings,
+    settings: {
+      company: settings.company ?? body.company ?? "",
+      period: settings.period ?? "",
+      periodQuarter: settings.periodQuarter ?? "",
+      periodYear: settings.periodYear ?? "",
+      statementType: settings.statementType ?? "",
+    },
+    show_intermediate_steps: Boolean(body.show_intermediate_steps),
   };
 
-  console.log("POST /chatbot backendPayload:", JSON.stringify(backendPayload, null, 2));
+  console.log("POST /api/chatbot backendPayload:", JSON.stringify(backendPayload, null, 2));
 
   const response = await fetch(
     buildExternalApiUrl(
@@ -104,23 +164,37 @@ async function proxyToBackend(body: any) {
       : typeof json?.message === "string"
         ? json.message
         : JSON.stringify(json);
-  const dataSources = Array.isArray(json?.data_sources)
-    ? json.data_sources
+  const dataSources = getArrayField(json, [
+    "data_sources",
+    "dataSources",
+    "sources",
+    "sourceDocuments",
+    "source_documents",
+  ]);
+  const usedExpertKnowledge = Array.isArray(json?.usedExpertKnowledge)
+    ? json.usedExpertKnowledge
     : [];
+  const appliedExternalData = getArrayField(json, [
+    "appliedExternalData",
+    "usedExternalData",
+    "externalData",
+    "external_data",
+  ]);
+  const externalDataQueryText =
+    typeof json?.externalDataQueryText === "string"
+      ? json.externalDataQueryText
+      : "";
 
-  return new Response(answer, {
-    status: response.status,
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      ...(dataSources.length
-        ? {
-            [DATA_SOURCES_HEADER]: Buffer.from(
-              JSON.stringify(dataSources),
-            ).toString("base64"),
-          }
-        : {}),
+  return NextResponse.json(
+    {
+      answer,
+      appliedExternalData,
+      data_sources: dataSources,
+      usedExpertKnowledge,
+      externalDataQueryText,
     },
-  });
+    { status: response.status },
+  );
 }
 
 /**
@@ -132,7 +206,10 @@ async function proxyToBackend(body: any) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const proxiedResponse = await proxyToBackend(body);
+    const proxiedResponse = await proxyToBackend(body, {
+      includeExternalDataRequest:
+        req.nextUrl.pathname.includes("chatbot-with-external"),
+    });
     if (proxiedResponse) {
       return proxiedResponse;
     }
@@ -195,7 +272,9 @@ export async function POST(req: NextRequest) {
      * response:
      * {
      *   answer: string,
-     *   data_sources: [...]
+     *   data_sources: [...],
+     *   usedExpertKnowledge: [...],
+     *   externalDataQueryText: string
      * }
      */
     return new StreamingTextResponse(stream);

@@ -1,53 +1,68 @@
-import { ChatWindow } from "@/components/ChatWindow";
-import { GuideInfoBox } from "@/components/guide/GuideInfoBox";
-import { BACKEND_API_PATHS } from "@/utils/api";
+import Link from "next/link";
+import { ArrowRight, Bot, FileText } from "lucide-react";
+
+const entryCards = [
+  {
+    title: "AI Chat Bot",
+    description: "進入授信 AI 助理，針對公司財務、授信風險與資料倉儲內容進行多輪問答。",
+    href: "/chatbot",
+    cta: "開始對話",
+    icon: Bot,
+    accentClassName: "bg-[#57A6D4] text-white",
+  },
+  {
+    title: "徵審報告產生器",
+    description: "進入報告產生流程，依輸入內容整理徵審分析與結構化報告草稿。",
+    href: "/report-generator",
+    cta: "產生報告",
+    icon: FileText,
+    accentClassName: "bg-[#2F8F83] text-white",
+  },
+];
 
 export default function Home() {
-  const InfoCard = (
-    <GuideInfoBox>
-      <ul>
-        <li className="text-l">
-          <span className="ml-2">
-            這個聊天視窗已支援多輪上下文追問，可直接延續上一題，例如：
-            <code>那跟同業比呢？</code>
-          </span>
-        </li>
-        <li className="hidden text-l md:block">
-          <span className="ml-2">
-            右上角可建立新對話、複製整段內容，手機版可從
-            <code>歷史紀錄</code> 入口切換過去案件。
-          </span>
-        </li>
-        <li>
-          <span className="ml-2">
-            每則助理回答都可單獨複製，也可複製整段對話。
-          </span>
-        </li>
-        <li className="hidden text-l md:block">
-          <span className="ml-2">
-            若需正式串接後端歷史紀錄與案件系統，可從
-            <code>app/api/chat/sessions</code> 開始接入。
-          </span>
-        </li>
-        <li className="text-l">
-          <span className="ml-2">
-            可先測試：<code>請分析這家公司授信風險</code>
-          </span>
-        </li>
-      </ul>
-    </GuideInfoBox>
-  );
   return (
-    <ChatWindow
-      endpoint={BACKEND_API_PATHS.chat}
-      emoji="AI"
-      placeholder="請輸入授信調查問題"
-      emptyStateComponent={InfoCard}
-      presetQuestions={[
-        "現金水位是否充足？",
-        "是否有短債壓力？",
-        "近三期營收與獲利趨勢是否惡化？",
-      ]}
-    />
+    <main className="h-full overflow-y-auto bg-[#f8fcff]">
+      <div className="mx-auto flex min-h-full max-w-6xl flex-col justify-center px-5 py-10 md:px-8">
+        <section className="max-w-3xl">
+          <div className="text-sm font-semibold text-[#2d689d]">AITC Credit Investigation</div>
+          <h1 className="mt-3 text-3xl font-semibold leading-tight text-[#12344a] md:text-5xl">
+            請選擇要使用的功能
+          </h1>
+          <p className="mt-4 text-base leading-7 text-[#4c7187] md:text-lg">
+            進入 AI Chat Bot 進行授信風險問答，或使用徵審報告產生器建立分析報告草稿。
+          </p>
+        </section>
+
+        <section className="mt-8 grid gap-4 md:grid-cols-2">
+          {entryCards.map((entry) => {
+            const Icon = entry.icon;
+
+            return (
+              <Link
+                key={entry.href}
+                href={entry.href}
+                className="group rounded-lg border border-[#d6e8f4] bg-white p-6 shadow-[0_14px_40px_rgba(48,169,216,0.08)] transition-colors hover:border-[#57A6D4] hover:bg-[#f4fafe]"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ${entry.accentClassName}`}>
+                    <Icon className="h-6 w-6" />
+                  </span>
+                  <ArrowRight className="mt-1 h-5 w-5 shrink-0 text-[#57A6D4] transition-transform group-hover:translate-x-1" />
+                </div>
+                <h2 className="mt-5 text-xl font-semibold text-[#12344a]">{entry.title}</h2>
+                <p className="mt-3 min-h-[72px] text-sm leading-6 text-[#4c7187] md:text-base">
+                  {entry.description}
+                </p>
+                <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-[#cfe4f2] bg-[#f8fcff] px-4 py-2 text-sm font-medium text-[#12344a]">
+                  <span>{entry.cta}</span>
+                  <ArrowRight className="h-4 w-4" />
+                </div>
+              </Link>
+            );
+          })}
+        </section>
+      </div>
+    </main>
   );
 }

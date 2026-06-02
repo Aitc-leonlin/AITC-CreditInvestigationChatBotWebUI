@@ -14,7 +14,7 @@ export type ExpertKnowledgeEntry = {
   companyLabel: string;
   companyPromptValue: string;
   sourceSchemaKey: string;
-  description: string;
+  anchorDescription: string;
   systemPrompt: string;
   updatedAt: string;
 };
@@ -64,7 +64,8 @@ function normalizeExpertKnowledgeEntry(entry: ExpertKnowledgeEntry) {
         entry.industry,
         normalizedCompanyLabel,
       ),
-    description: entry.description ?? "",
+    anchorDescription:
+      entry.anchorDescription ?? (entry as { description?: string }).description ?? "",
   };
 }
 

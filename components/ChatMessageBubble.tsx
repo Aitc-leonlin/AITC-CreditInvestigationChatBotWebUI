@@ -6,8 +6,13 @@ import { ChevronDown, Copy } from "lucide-react";
 
 export type UsedExpertKnowledge = {
   title?: string;
-  description?: string;
+  anchorDescription?: string;
   systemPrompt?: string;
+};
+
+export type ExternalReferenceData = {
+  source?: string;
+  response?: string;
 };
 
 function parseContextualUserMessage(content: string) {
@@ -68,11 +73,58 @@ function renderBoldMarkdown(content: string) {
   return parts;
 }
 
+function getSourceTitle(source: any) {
+  return (
+    source.title ??
+    source.name ??
+    source.label ??
+    source.source ??
+    source.sourceName ??
+    source.url ??
+    "資料來源"
+  );
+}
+
+function getSourceContent(source: any) {
+  return (
+    source.content ??
+    source.pageContent ??
+    source.summary ??
+    source.snippet ??
+    source.description ??
+    source.text ??
+    ""
+  );
+}
+
+function getSourceReference(source: any) {
+  return (
+    source.reference ??
+    source.period ??
+    source.path ??
+    source.url ??
+    source.source ??
+    ""
+  );
+}
+
+function SourceMeta(props: { label: string; value: unknown }) {
+  if (typeof props.value !== "string" || !props.value.trim()) return null;
+
+  return (
+    <div className="mt-1 break-words">
+      <span className="font-medium">{props.label}：</span>
+      {props.value}
+    </div>
+  );
+}
+
 export function ChatMessageBubble(props: {
   message: Message;
   aiEmoji?: string;
   dataSources: any[];
   appliedExpertKnowledge?: UsedExpertKnowledge[];
+  appliedExternalData?: ExternalReferenceData[];
   onCopy?: (message: Message) => void;
 }) {
   const isThinking =
@@ -80,11 +132,16 @@ export function ChatMessageBubble(props: {
     props.message.content.trim().length === 0;
   const [isDataSourcesOpen, setIsDataSourcesOpen] = useState(false);
   const [isExpertKnowledgeOpen, setIsExpertKnowledgeOpen] = useState(false);
+  const [isExternalDataOpen, setIsExternalDataOpen] = useState(false);
   const hasDataSources = !isThinking && props.dataSources && props.dataSources.length > 0;
   const hasAppliedExpertKnowledge =
     !isThinking &&
     props.appliedExpertKnowledge &&
     props.appliedExpertKnowledge.length > 0;
+  const hasExternalData =
+    !isThinking &&
+    props.appliedExternalData &&
+    props.appliedExternalData.length > 0;
   const contextualUserMessage =
     props.message.role === "user"
       ? parseContextualUserMessage(props.message.content)
@@ -166,25 +223,18 @@ export function ChatMessageBubble(props: {
           </button>
 
           {isDataSourcesOpen ? (
-            <div className="mt-3 space-y-2 text-xs">
+            <div className="mt-3 space-y-2 break-words text-xs">
               {props.dataSources.map((source, index) => (
                 <div
                   key={`data-source-${index}`}
                   className="rounded-xl border border-sky-200 bg-white/80 px-3 py-2 dark:border-sky-900 dark:bg-sky-950/50"
                 >
                   <div className="font-medium">
-                    {index + 1}. {source.title ?? source.name ?? source.label ?? "資料來源"}
+                    {index + 1}. {getSourceTitle(source)}
                   </div>
-                  {source.content ?? source.pageContent ? (
-                    <div className="mt-1">
-                      {source.content ?? source.pageContent}
-                    </div>
-                  ) : null}
-                  {source.reference ?? source.period ?? source.path ? (
-                    <div className="mt-1">
-                      {source.reference ?? source.period ?? source.path}
-                    </div>
-                  ) : null}
+                  <SourceMeta label="來源" value={source.source ?? source.sourceName} />
+                  <SourceMeta label="摘要" value={getSourceContent(source)} />
+                  <SourceMeta label="參照" value={getSourceReference(source)} />
                 </div>
               ))}
 
@@ -243,6 +293,52 @@ export function ChatMessageBubble(props: {
                   variant="outline"
                   size="sm"
                   onClick={() => setIsExpertKnowledgeOpen(false)}
+                >
+                  縮小
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {hasExternalData ? (
+        <div className="mt-2 w-full rounded-2xl border border-violet-300 bg-violet-100 px-3 py-2 text-violet-950 dark:border-violet-800 dark:bg-violet-950 dark:text-violet-100">
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 text-left text-sm"
+            onClick={() => setIsExternalDataOpen((current) => !current)}
+          >
+            <span className="font-medium">外部參考資料</span>
+            <ChevronDown
+              className={cn(
+                "h-4 w-4 transition-transform",
+                isExternalDataOpen ? "rotate-180" : null,
+              )}
+            />
+          </button>
+
+          {isExternalDataOpen ? (
+            <div className="mt-3 space-y-2 break-words text-xs">
+              {props.appliedExternalData?.map((entry, index) => (
+                <div
+                  key={`${entry.source ?? "external-data"}-${index}`}
+                  className="rounded-xl border border-violet-200 bg-white/80 px-3 py-2 break-words dark:border-violet-900 dark:bg-violet-950/50"
+                >
+                  <div className="break-words font-medium">
+                    {index + 1}. {entry.source || "AI Agent 外部資料查詢"}
+                  </div>
+                  <SourceMeta label="來源" value={entry.source} />
+                  <SourceMeta label="回傳內容" value={entry.response} />
+                </div>
+              ))}
+
+              <div className="flex justify-end pt-1">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsExternalDataOpen(false)}
                 >
                   縮小
                 </Button>

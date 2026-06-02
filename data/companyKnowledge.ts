@@ -130,16 +130,16 @@ export const COMPANY_OPTIONS: CompanyOption[] = [
     promptValue: "聯鈞光電股份有限公司(3450.TW)",
     industry: "光電",
   },
-  {
-    label: "鑫科材料科技股份有限公司 / 3663 / 鑫科",
-    promptValue: "鑫科材料科技股份有限公司(3663.TW)",
-    industry: "其他電子",
-  },
-  {
-    label: "安馳科技股份有限公司 / 3528 / 安馳",
-    promptValue: "安馳科技股份有限公司(3528.TW)",
-    industry: "電子通路",
-  },
+  // {
+  //   label: "鑫科材料科技股份有限公司 / 3663 / 鑫科",
+  //   promptValue: "鑫科材料科技股份有限公司(3663.TW)",
+  //   industry: "其他電子",
+  // },
+  // {
+  //   label: "安馳科技股份有限公司 / 3528 / 安馳",
+  //   promptValue: "安馳科技股份有限公司(3528.TW)",
+  //   industry: "電子通路",
+  // },
   {
     label: "基泰建設股份有限公司 / 2538 / 基泰",
     promptValue: "基泰建設股份有限公司(2538.TW)",

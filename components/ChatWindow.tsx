@@ -10,6 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Copy,
+  Database,
+  Globe2,
   MessageSquarePlus,
   Paperclip,
   Settings,
@@ -17,17 +19,27 @@ import {
 } from "lucide-react";
 import HistoryEduIcon from "@mui/icons-material/HistoryEdu";
 import CleaningServicesIcon from "@mui/icons-material/CleaningServices";
+import PsychologyAltIcon from "@mui/icons-material/PsychologyAlt";
+import {
+  Checkbox as MuiCheckbox,
+  FormControlLabel,
+} from "@mui/material";
 
 import { ChatMessageBubble } from "@/components/ChatMessageBubble";
-import type { UsedExpertKnowledge } from "@/components/ChatMessageBubble";
+import type {
+  ExternalReferenceData,
+  UsedExpertKnowledge,
+} from "@/components/ChatMessageBubble";
+import { CHAT_SETTINGS_STORAGE_KEY } from "@/data/chatSettings";
 import { IntermediateStep } from "./IntermediateStep";
 import { Button } from "./ui/button";
-import { Checkbox } from "./ui/checkbox";
+import { Textarea } from "./ui/textarea";
 import { UploadDocumentsForm } from "./UploadDocumentsForm";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -40,10 +52,12 @@ import {
   getCompanyPromptValue,
 } from "@/data/companyKnowledge";
 import {
-  type ExpertKnowledgeEntry,
   resolveAppliedExpertKnowledgeEntries,
 } from "@/data/expertKnowledge";
-import { buildBackendApiUrl } from "@/utils/api";
+import {
+  resolveAppliedWarehouseDataEntries,
+} from "@/data/warehouseData";
+import { BACKEND_API_PATHS, buildBackendApiUrl } from "@/utils/api";
 
 const STORAGE_KEY = "aitc-chatbot-sessions-v1";
 const HISTORY_PANEL_STORAGE_KEY = "aitc-chatbot-history-panel-open-v1";
@@ -55,6 +69,9 @@ type ChatSettings = {
   periodYear: string;
   periodQuarter: string;
   statementType: string;
+  useExpertKnowledge: boolean;
+  useWarehouseData: boolean;
+  useExternalData: boolean;
 };
 
 type ChatSession = {
@@ -63,6 +80,13 @@ type ChatSession = {
   createdAt: string;
   updatedAt: string;
   messages: Message[];
+};
+
+type PendingSubmission = {
+  requestMessages: Message[];
+  displayMessages: Message[];
+  clearInputOnConfirm: boolean;
+  externalDataQueryText: string;
 };
 
 function getPeriodPromptValue(settings: ChatSettings) {
@@ -124,6 +148,47 @@ function getSelectedConditionSummary(settings: ChatSettings) {
   return "目前條件未完整，送出時將使用原始問題";
 }
 
+function ReferenceSettingLabel(props: {
+  icon: ReactNode;
+  text: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span>{props.text}</span>
+      <span className="inline-flex text-muted-foreground">{props.icon}</span>
+    </span>
+  );
+}
+
+function ReferenceSettingCheckbox(props: {
+  checked: boolean;
+  icon: ReactNode;
+  onCheckedChange: (checked: boolean) => void;
+  text: string;
+}) {
+  return (
+    <FormControlLabel
+      control={
+        <MuiCheckbox
+          checked={props.checked === true}
+          onChange={(_, checked) => props.onCheckedChange(checked)}
+          size="small"
+        />
+      }
+      label={<ReferenceSettingLabel text={props.text} icon={props.icon} />}
+      sx={{
+        m: 0,
+        minHeight: 36,
+        "& .MuiFormControlLabel-label": {
+          alignItems: "center",
+          display: "flex",
+          fontSize: 14,
+        },
+      }}
+    />
+  );
+}
+
 function createEmptySettings(): ChatSettings {
   return {
     company: "",
@@ -131,7 +196,17 @@ function createEmptySettings(): ChatSettings {
     periodYear: "",
     periodQuarter: "",
     statementType: "",
+    useExpertKnowledge: true,
+    useWarehouseData: true,
+    useExternalData: true,
   };
+}
+
+function toStoredBoolean(value: unknown, fallback: boolean) {
+  if (typeof value === "boolean") return value;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return fallback;
 }
 
 function createId() {
@@ -147,6 +222,42 @@ function parseBase64JsonHeader<T>(value: string): T {
   const bytes = Uint8Array.from(binaryString, (char) => char.charCodeAt(0));
   const decoded = new TextDecoder("utf-8").decode(bytes);
   return JSON.parse(decoded) as T;
+}
+
+function getArrayField(value: any, fieldNames: string[]) {
+  for (const fieldName of fieldNames) {
+    if (Array.isArray(value?.[fieldName])) {
+      return value[fieldName];
+    }
+  }
+
+  return [];
+}
+
+function buildExternalReferenceData(
+  queryText: string,
+  decision: "adopted" | "rejected",
+  response = "",
+): ExternalReferenceData[] {
+  const trimmedQueryText = queryText.trim();
+  const trimmedResponse = response.trim();
+  if (!trimmedQueryText && !trimmedResponse) return [];
+
+  return [
+    {
+      source: "AI Agent 外部資料查詢",
+      response: trimmedResponse || `${decision}: ${trimmedQueryText}`,
+    },
+  ];
+}
+
+function normalizeExternalReferenceData(entries: any[]): ExternalReferenceData[] {
+  return entries
+    .map((entry) => ({
+      source: typeof entry?.source === "string" ? entry.source : "",
+      response: typeof entry?.response === "string" ? entry.response : "",
+    }))
+    .filter((entry) => entry.source || entry.response);
 }
 
 function buildSessionTitle(messages: Message[]) {
@@ -241,6 +352,7 @@ function ChatMessages(props: {
   presetQuestions?: string[];
   dataSourcesForMessages: Record<string, any[]>;
   expertKnowledgeForMessages: Record<string, UsedExpertKnowledge[]>;
+  externalDataForMessages: Record<string, ExternalReferenceData[]>;
   aiEmoji?: string;
   className?: string;
   onCopyMessage: (message: Message) => void;
@@ -289,6 +401,7 @@ function ChatMessages(props: {
             appliedExpertKnowledge={
               props.expertKnowledgeForMessages[message.id] ?? []
             }
+            appliedExternalData={props.externalDataForMessages[message.id] ?? []}
             onCopy={props.onCopyMessage}
           />
         );
@@ -561,7 +674,7 @@ function SettingsPanel(props: {
         ) : null}
       </div>
 
-      <div className="flex flex-1 flex-col gap-5 p-4">
+      <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-4">
         <div className="space-y-2">
           <label className="text-sm font-medium">公司選擇器</label>
           <select
@@ -641,10 +754,56 @@ function SettingsPanel(props: {
           ) : null}
         </div>
 
+        <div className="space-y-3">
+          <label className="text-sm font-medium">參考設定</label>
+          <div className="rounded-lg border border-border bg-background px-3 py-2">
+            <div className="flex flex-col gap-1">
+              <ReferenceSettingCheckbox
+                checked={props.value.useExpertKnowledge}
+                onCheckedChange={(checked) =>
+                  props.onChange({
+                    ...props.value,
+                    useExpertKnowledge: checked,
+                  })
+                }
+                text="是否參考專家指引"
+                icon={<PsychologyAltIcon sx={{ fontSize: 18 }} />}
+              />
+
+              <ReferenceSettingCheckbox
+                checked={props.value.useWarehouseData}
+                onCheckedChange={(checked) =>
+                  props.onChange({
+                    ...props.value,
+                    useWarehouseData: checked,
+                  })
+                }
+                text="是否參考資料倉儲"
+                icon={<Database className="h-4 w-4" />}
+              />
+
+              <ReferenceSettingCheckbox
+                checked={props.value.useExternalData}
+                onCheckedChange={(checked) =>
+                  props.onChange({
+                    ...props.value,
+                    useExternalData: checked,
+                  })
+                }
+                text="是否參考外部資料"
+                icon={<Globe2 className="h-4 w-4" />}
+              />
+            </div>
+          </div>
+        </div>
+
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm leading-6 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100">
           <div className="font-semibold">查詢設定說明</div>
           <div className="mt-1">
             若已選擇公司與區間，送出對話時系統會自動將公司與時間組成查詢前言，並在下一行接續原始問題，再發送至 AI Agent。
+          </div>
+          <div className="mt-1">
+            另外可控制是否讓後端在回答時參考專家指引、資料倉儲與外部資料。
           </div>
           <div className="mt-2 rounded-md bg-white/70 px-2 py-2 text-xs leading-6 dark:bg-black/20">
             範例：
@@ -705,6 +864,9 @@ export function ChatWindow(props: {
   const [expertKnowledgeForMessages, setExpertKnowledgeForMessages] = useState<
     Record<string, UsedExpertKnowledge[]>
   >({});
+  const [externalDataForMessages, setExternalDataForMessages] = useState<
+    Record<string, ExternalReferenceData[]>
+  >({});
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [draftSession, setDraftSession] = useState<ChatSession | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -713,7 +875,13 @@ export function ChatWindow(props: {
   const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState(true);
   const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(true);
   const [settings, setSettings] = useState<ChatSettings>(createEmptySettings());
+  const [pendingSubmission, setPendingSubmission] = useState<PendingSubmission | null>(
+    null,
+  );
+  const [isExternalDataConfirmOpen, setIsExternalDataConfirmOpen] = useState(false);
+  const [externalDataQueryDraft, setExternalDataQueryDraft] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
+  const externalDataConfirmTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const storedSessions = window.localStorage.getItem(STORAGE_KEY);
@@ -781,6 +949,56 @@ export function ChatWindow(props: {
     );
   }, [isSettingsPanelOpen]);
 
+  useEffect(() => {
+    const storedSettings = window.localStorage.getItem(CHAT_SETTINGS_STORAGE_KEY);
+    if (!storedSettings) return;
+
+    try {
+      const parsedSettings = JSON.parse(storedSettings) as ChatSettings & {
+        useNegativeNews?: boolean;
+      };
+      setSettings((currentSettings) => ({
+        ...currentSettings,
+        ...parsedSettings,
+        useExpertKnowledge: toStoredBoolean(
+          parsedSettings.useExpertKnowledge,
+          currentSettings.useExpertKnowledge,
+        ),
+        useWarehouseData:
+          typeof parsedSettings.useWarehouseData === "undefined"
+            ? toStoredBoolean(
+                parsedSettings.useNegativeNews,
+                currentSettings.useWarehouseData,
+              )
+            : toStoredBoolean(
+                parsedSettings.useWarehouseData,
+                currentSettings.useWarehouseData,
+              ),
+        useExternalData: toStoredBoolean(
+          parsedSettings.useExternalData,
+          currentSettings.useExternalData,
+        ),
+      }));
+    } catch {
+      return;
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      CHAT_SETTINGS_STORAGE_KEY,
+      JSON.stringify(settings),
+    );
+  }, [settings]);
+
+  useEffect(() => {
+    return () => {
+      if (externalDataConfirmTimerRef.current !== null) {
+        window.clearTimeout(externalDataConfirmTimerRef.current);
+      }
+    };
+  }, []);
+
   const activeSession = useMemo(
     () =>
       sessions.find((session) => session.id === activeSessionId) ??
@@ -801,13 +1019,6 @@ export function ChatWindow(props: {
       : openSidePanelsCount === 1
         ? "max-w-[960px]"
         : "max-w-[1100px]";
-  const shellMaxWidthClass =
-    openSidePanelsCount === 2
-      ? "max-w-[1100px]"
-      : openSidePanelsCount === 1
-        ? "max-w-[1320px]"
-        : "max-w-[1400px]";
-
   function replaceActiveSession(messages: Message[]) {
     if (!activeSessionId) return;
 
@@ -838,6 +1049,7 @@ export function ChatWindow(props: {
       setInput("");
       setDataSourcesForMessages({});
       setExpertKnowledgeForMessages({});
+      setExternalDataForMessages({});
       return;
     }
 
@@ -847,6 +1059,7 @@ export function ChatWindow(props: {
     setInput("");
     setDataSourcesForMessages({});
     setExpertKnowledgeForMessages({});
+    setExternalDataForMessages({});
   }
 
   function selectSession(sessionId: string) {
@@ -854,18 +1067,108 @@ export function ChatWindow(props: {
     setInput("");
     setDataSourcesForMessages({});
     setExpertKnowledgeForMessages({});
+    setExternalDataForMessages({});
   }
 
   function stopGenerating() {
+    if (externalDataConfirmTimerRef.current !== null) {
+      window.clearTimeout(externalDataConfirmTimerRef.current);
+      externalDataConfirmTimerRef.current = null;
+    }
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
+    setPendingSubmission(null);
+    setIsExternalDataConfirmOpen(false);
+    setExternalDataQueryDraft("");
     setIsLoading(false);
     setIntermediateStepsLoading(false);
   }
 
+  async function confirmPendingSubmission() {
+    if (!pendingSubmission) return;
+
+    if (externalDataConfirmTimerRef.current !== null) {
+      window.clearTimeout(externalDataConfirmTimerRef.current);
+      externalDataConfirmTimerRef.current = null;
+    }
+
+    if (pendingSubmission.clearInputOnConfirm) {
+      setInput("");
+    }
+
+    const nextRequestMessages = pendingSubmission.requestMessages;
+    const pendingDisplayMessages = pendingSubmission.displayMessages;
+    const pendingExternalDataQueryText = externalDataQueryDraft.trim();
+    setIsExternalDataConfirmOpen(false);
+    setExternalDataQueryDraft("");
+    setPendingSubmission(null);
+    await streamAssistantReply(nextRequestMessages, {
+      displayMessages: pendingDisplayMessages,
+      targetEndpoint: BACKEND_API_PATHS.chatWithExternal,
+      externalDataQueryText:
+        pendingExternalDataQueryText || pendingSubmission.externalDataQueryText,
+      externalDataDecision: "adopted",
+    });
+  }
+
+  async function rejectPendingSubmission() {
+    if (!pendingSubmission) return;
+
+    if (externalDataConfirmTimerRef.current !== null) {
+      window.clearTimeout(externalDataConfirmTimerRef.current);
+      externalDataConfirmTimerRef.current = null;
+    }
+
+    const nextRequestMessages = pendingSubmission.requestMessages;
+    const pendingDisplayMessages = pendingSubmission.displayMessages;
+    const pendingExternalDataQueryText = externalDataQueryDraft.trim();
+    setIsExternalDataConfirmOpen(false);
+    setExternalDataQueryDraft("");
+    setPendingSubmission(null);
+    await streamAssistantReply(nextRequestMessages, {
+      displayMessages: pendingDisplayMessages,
+      targetEndpoint: BACKEND_API_PATHS.chatWithExternal,
+      externalDataQueryText:
+        pendingExternalDataQueryText || pendingSubmission.externalDataQueryText,
+      externalDataDecision: "rejected",
+    });
+  }
+
+  async function submitQuestion(
+    question: string,
+    options?: { clearInputOnConfirm?: boolean },
+  ) {
+    if (isLoading || intermediateStepsLoading || !activeSessionId) return;
+
+    const trimmedQuestion = question.trim();
+    if (!trimmedQuestion) return;
+    const outboundQuestion = formatQuestionWithContext(trimmedQuestion, settings);
+    if (!outboundQuestion) return;
+
+    const nextMessages = activeMessages.concat({
+      id: createId(),
+      content: outboundQuestion,
+      role: "user",
+    });
+
+    if (options?.clearInputOnConfirm) {
+      setInput("");
+    }
+
+    await streamAssistantReply(nextMessages, {
+      clearInputOnConfirm: options?.clearInputOnConfirm ?? false,
+    });
+  }
+
   async function streamAssistantReply(
     requestMessages: Message[],
-    options?: { displayMessages?: Message[] },
+    options?: {
+      displayMessages?: Message[];
+      targetEndpoint?: string;
+      externalDataQueryText?: string;
+      externalDataDecision?: "adopted" | "rejected";
+      clearInputOnConfirm?: boolean;
+    },
   ) {
     if (!activeSessionId) return;
 
@@ -883,27 +1186,56 @@ export function ChatWindow(props: {
     setIntermediateStepsLoading(true);
     setDataSourcesForMessages({});
     setExpertKnowledgeForMessages({});
+    setExternalDataForMessages({});
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    const appliedExpertKnowledgeEntries = resolveAppliedExpertKnowledgeEntries();
+    const appliedExpertKnowledgeEntries = settings.useExpertKnowledge
+      ? resolveAppliedExpertKnowledgeEntries()
+      : [];
+    const appliedWarehouseDataEntries = settings.useWarehouseData
+      ? resolveAppliedWarehouseDataEntries()
+      : [];
     const appliedExpertKnowledgePayload = appliedExpertKnowledgeEntries
       .map((entry) => ({
-        title: entry.title?.trim?.() ?? "",
+        anchorDescription: entry.anchorDescription?.trim?.() ?? "",
+        companyLabel: entry.companyLabel?.trim?.() ?? "",
         dataSource: entry.dataSource?.trim?.() ?? "",
         industry: entry.industry?.trim?.() ?? "",
-        companyLabel: entry.companyLabel?.trim?.() ?? "",
-        description: entry.description?.trim?.() ?? "",
         systemPrompt: entry.systemPrompt?.trim?.() ?? "",
+        title: entry.title?.trim?.() ?? "",
       }))
       .filter(
         (entry) =>
-          entry.title ||
+          entry.anchorDescription ||
+          entry.companyLabel ||
           entry.dataSource ||
           entry.industry ||
+          entry.systemPrompt ||
+          entry.title,
+      );
+    const appliedWarehouseDataPayload = appliedWarehouseDataEntries
+      .map((entry) => ({
+        category: entry.category?.trim?.() ?? "",
+        companyLabel: entry.companyLabel?.trim?.() ?? "",
+        companyPromptValue: entry.companyPromptValue?.trim?.() ?? "",
+        industry: entry.industry?.trim?.() ?? "",
+        source: entry.source?.trim?.() ?? "",
+        summary: entry.summary?.trim?.() ?? "",
+        title: entry.title?.trim?.() ?? "",
+        updatedAt: entry.updatedAt ?? "",
+        url: entry.url?.trim?.() ?? "",
+      }))
+      .filter(
+        (entry) =>
+          entry.category ||
           entry.companyLabel ||
-          entry.description ||
-          entry.systemPrompt,
+          entry.companyPromptValue ||
+          entry.industry ||
+          entry.source ||
+          entry.summary ||
+          entry.title ||
+          entry.url,
       );
 
     console.log("[ChatWindow][appliedExpertKnowledge] entries", appliedExpertKnowledgeEntries);
@@ -911,27 +1243,68 @@ export function ChatWindow(props: {
       "[ChatWindow][appliedExpertKnowledge] payload",
       appliedExpertKnowledgePayload,
     );
+    console.log("[ChatWindow][appliedWarehouseData] entries", appliedWarehouseDataEntries);
+    console.log(
+      "[ChatWindow][appliedWarehouseData] payload",
+      appliedWarehouseDataPayload,
+    );
 
     try {
-      // 將完整聊天內容送到後端聊天服務，並把串流回應即時顯示在前端。
-      const response = await fetch(buildBackendApiUrl(props.endpoint), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json, text/plain",
+      const targetEndpoint = options?.targetEndpoint ?? props.endpoint;
+      const appliedExternalDataPayload =
+        targetEndpoint === BACKEND_API_PATHS.chatWithExternal
+          ? buildExternalReferenceData(
+              options?.externalDataQueryText ?? "",
+              options?.externalDataDecision ?? "adopted",
+            )
+          : [];
+      const requestPayload = {
+        appliedExpertKnowledge: appliedExpertKnowledgePayload,
+        appliedWarehouseData: appliedWarehouseDataPayload,
+        company: settings.company ?? "",
+        conversationId: activeSessionId,
+        ...(targetEndpoint === BACKEND_API_PATHS.chatWithExternal
+          ? {
+              appliedExternalData: appliedExternalDataPayload,
+              externalDataDecision: options?.externalDataDecision ?? "adopted",
+              externalDataQueryText: options?.externalDataQueryText ?? "",
+            }
+          : {}),
+        messages: requestMessages.map((message) => ({
+          content: message.content?.toString() ?? "",
+          role: message.role,
+        })),
+        period: getBackendPeriodLabel(settings),
+        question:
+          requestMessages[requestMessages.length - 1]?.content?.toString() ?? "",
+        referenceSettings: {
+          useExpertKnowledge: settings.useExpertKnowledge,
+          useExternalData: settings.useExternalData,
+          useWarehouseData: settings.useWarehouseData,
         },
-        body: JSON.stringify({
-          question: requestMessages[requestMessages.length - 1]?.content?.toString() ?? "",
+        settings: {
           company: settings.company ?? "",
-          period: getBackendPeriodLabel(settings),
-          conversationId: activeSessionId,
-          messages: requestMessages,
-          settings,
-          appliedExpertKnowledge: appliedExpertKnowledgePayload,
-          show_intermediate_steps: showIntermediateSteps,
-        }),
-        signal: controller.signal,
-      });
+          period: settings.period ?? "",
+          periodQuarter: settings.periodQuarter ?? "",
+          periodYear: settings.periodYear ?? "",
+          statementType: settings.statementType ?? "",
+        },
+        show_intermediate_steps: showIntermediateSteps,
+      };
+
+      // 將完整聊天內容送到後端聊天服務，並把串流回應即時顯示在前端。
+      const response = await fetch(
+        buildBackendApiUrl(targetEndpoint),
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json, text/plain",
+          },
+          body: JSON.stringify(requestPayload),
+          signal: controller.signal,
+        },
+      );
 
       if (!response.ok) {
         const error = await response.text();
@@ -950,25 +1323,57 @@ export function ChatWindow(props: {
       const contentType = response.headers.get("content-type") ?? "";
       if (contentType.includes("application/json")) {
         const json = await response.json();
+        const externalDataQueryText =
+          typeof json?.externalDataQueryText === "string"
+            ? json.externalDataQueryText.trim()
+            : "";
         const assistantContent =
           typeof json?.answer === "string"
             ? json.answer
             : typeof json?.message === "string"
               ? json.message
               : JSON.stringify(json);
-        const dataSources = Array.isArray(json?.data_sources) ? json.data_sources : [];
+        const dataSources = getArrayField(json, [
+          "data_sources",
+          "dataSources",
+          "sources",
+          "sourceDocuments",
+          "source_documents",
+        ]);
+        const responseExternalData = normalizeExternalReferenceData(
+          getArrayField(json, [
+            "appliedExternalData",
+            "usedExternalData",
+            "externalData",
+            "external_data",
+          ]),
+        );
+        const fallbackExternalData =
+          options?.externalDataDecision && options.externalDataQueryText
+            ? buildExternalReferenceData(
+                options.externalDataQueryText,
+                options.externalDataDecision,
+                typeof json?.externalDataSummary === "string"
+                  ? json.externalDataSummary
+                  : "",
+              )
+            : [];
         const usedExpertKnowledge = Array.isArray(json?.usedExpertKnowledge)
           ? json.usedExpertKnowledge
               .map((entry: any) => ({
                 title: typeof entry?.title === "string" ? entry.title : "",
-                description:
-                  typeof entry?.description === "string" ? entry.description : "",
+                anchorDescription:
+                  typeof entry?.anchorDescription === "string"
+                    ? entry.anchorDescription
+                    : typeof entry?.description === "string"
+                      ? entry.description
+                      : "",
                 systemPrompt:
                   typeof entry?.systemPrompt === "string" ? entry.systemPrompt : "",
               }))
               .filter(
                 (entry: UsedExpertKnowledge) =>
-                  entry.title || entry.description || entry.systemPrompt,
+                  entry.title || entry.anchorDescription || entry.systemPrompt,
               )
           : [];
 
@@ -980,6 +1385,28 @@ export function ChatWindow(props: {
         setExpertKnowledgeForMessages({
           [assistantMessageId]: usedExpertKnowledge,
         });
+        setExternalDataForMessages({
+          [assistantMessageId]:
+            responseExternalData.length > 0
+              ? responseExternalData
+              : fallbackExternalData,
+        });
+
+        if (
+          settings.useExternalData &&
+          !options?.externalDataDecision &&
+          externalDataQueryText
+        ) {
+          setPendingSubmission({
+            requestMessages,
+            displayMessages,
+            clearInputOnConfirm: options?.clearInputOnConfirm ?? false,
+            externalDataQueryText,
+          });
+          setExternalDataQueryDraft(externalDataQueryText);
+          setIsExternalDataConfirmOpen(true);
+          return;
+        }
 
         const finalMessages = requestMessages.concat({
           id: assistantMessageId,
@@ -1037,37 +1464,11 @@ export function ChatWindow(props: {
 
   async function sendMessage(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (isLoading || intermediateStepsLoading || !activeSessionId) return;
-
-    const trimmedInput = input.trim();
-    if (!trimmedInput) return;
-    const outboundQuestion = formatQuestionWithContext(trimmedInput, settings);
-    if (!outboundQuestion) return;
-
-    const nextMessages = activeMessages.concat({
-      id: createId(),
-      content: outboundQuestion,
-      role: "user",
-    });
-    setInput("");
-    await streamAssistantReply(nextMessages);
+    await submitQuestion(input, { clearInputOnConfirm: true });
   }
 
   async function sendPresetQuestion(question: string) {
-    if (isLoading || intermediateStepsLoading || !activeSessionId) return;
-
-    const trimmedQuestion = question.trim();
-    if (!trimmedQuestion) return;
-    const outboundQuestion = formatQuestionWithContext(trimmedQuestion, settings);
-    if (!outboundQuestion) return;
-
-    const nextMessages = activeMessages.concat({
-      id: createId(),
-      content: outboundQuestion,
-      role: "user",
-    });
-
-    await streamAssistantReply(nextMessages);
+    await submitQuestion(question);
   }
 
   function handleCopyMessage(message: Message) {
@@ -1083,7 +1484,8 @@ export function ChatWindow(props: {
   }
 
   return (
-    <div className="flex h-full bg-background">
+    <>
+      <div className="flex h-full bg-background">
       <aside
         className={cn(
           "hidden shrink-0 overflow-hidden border-r border-border bg-muted/20 transition-[width] duration-300 lg:flex",
@@ -1103,11 +1505,10 @@ export function ChatWindow(props: {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="border-b border-border px-4 py-3 lg:pl-0">
+        <div className="border-b border-border px-4 py-3">
           <div
             className={cn(
-              "mx-auto flex items-center justify-between gap-3 transition-[max-width] duration-300",
-              shellMaxWidthClass,
+              "flex items-center justify-between gap-3 transition-[max-width] duration-300"
             )}
           >
             <div className="flex items-center gap-3">
@@ -1130,7 +1531,6 @@ export function ChatWindow(props: {
               </Button>
 
               <div>
-                <div className="text-sm font-semibold">AITC Credit Investigation Chatbot</div>
                 <div className="mt-2 mr-[10px] inline-flex rounded-full border border-sky-300 bg-sky-100 px-3 py-1 text-xs font-medium text-sky-900 shadow-sm dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100">
                   {selectedConditionSummary}
                 </div>
@@ -1142,7 +1542,7 @@ export function ChatWindow(props: {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <Dialog>
                 <DialogTrigger asChild>
                   <Button type="button" variant="outline" size="sm" className="lg:hidden">
@@ -1167,41 +1567,50 @@ export function ChatWindow(props: {
                 </DialogContent>
               </Dialog>
 
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={clearCompanyConditions}
-              >
-                <CleaningServicesIcon sx={{ fontSize: 16 }} />
-                清除公司條件
-              </Button>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={clearCompanyConditions}
+                >
+                  <CleaningServicesIcon sx={{ fontSize: 16 }} />
+                  清除公司條件
+                </Button>
 
-              <Button type="button" variant="outline" size="sm" onClick={handleCopyConversation}>
-                <Copy className="h-4 w-4" />
-                複製完整對話
-              </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCopyConversation}
+                >
+                  <Copy className="h-4 w-4" />
+                  複製完整對話
+                </Button>
+              </div>
 
-              <Button type="button" variant="outline" size="sm" onClick={createSession}>
-                <MessageSquarePlus className="h-4 w-4" />
-                新對話
-              </Button>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={createSession}>
+                  <MessageSquarePlus className="h-4 w-4" />
+                  新對話
+                </Button>
 
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={cn(
-                  "hidden lg:inline-flex",
-                  isSettingsPanelOpen
-                    ? "border-slate-300 bg-slate-100 text-slate-500 hover:bg-slate-100 hover:text-slate-500"
-                    : null,
-                )}
-                onClick={() => setIsSettingsPanelOpen((current) => !current)}
-              >
-                <Settings className="h-4 w-4" />
-                查詢設定
-              </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    "hidden lg:inline-flex",
+                    isSettingsPanelOpen
+                      ? "border-slate-300 bg-slate-100 text-slate-500 hover:bg-slate-100 hover:text-slate-500"
+                      : null,
+                  )}
+                  onClick={() => setIsSettingsPanelOpen((current) => !current)}
+                >
+                  <Settings className="h-4 w-4" />
+                  查詢設定
+                </Button>
+              </div>
 
               <Dialog>
                 <DialogTrigger asChild>
@@ -1237,6 +1646,7 @@ export function ChatWindow(props: {
                 presetQuestions={props.presetQuestions}
                 dataSourcesForMessages={dataSourcesForMessages}
                 expertKnowledgeForMessages={expertKnowledgeForMessages}
+                externalDataForMessages={externalDataForMessages}
                 className={contentMaxWidthClass}
                 onCopyMessage={handleCopyMessage}
                 onSelectPresetQuestion={sendPresetQuestion}
@@ -1253,16 +1663,24 @@ export function ChatWindow(props: {
                 className={contentMaxWidthClass}
               >
                 {props.showIntermediateStepsToggle && (
-                  <>
-                    <Checkbox
-                      id="show_intermediate_steps"
-                      checked={showIntermediateSteps}
-                      onCheckedChange={(isChecked) => {
-                        setShowIntermediateSteps(!!isChecked);
-                      }}
-                    />
-                    <label htmlFor="show_intermediate_steps">Show intermediate steps</label>
-                  </>
+                  <FormControlLabel
+                    control={
+                      <MuiCheckbox
+                        checked={showIntermediateSteps}
+                        onChange={(_, checked) => {
+                          setShowIntermediateSteps(checked);
+                        }}
+                        size="small"
+                      />
+                    }
+                    label="Show intermediate steps"
+                    sx={{
+                      m: 0,
+                      "& .MuiFormControlLabel-label": {
+                        fontSize: 14,
+                      },
+                    }}
+                  />
                 )}
 
                 {props.showIngestForm && (
@@ -1290,21 +1708,68 @@ export function ChatWindow(props: {
         </main>
       </div>
 
-      <aside
-        className={cn(
-          "hidden shrink-0 overflow-hidden border-l border-border bg-muted/20 transition-[width] duration-300 lg:flex",
-          isSettingsPanelOpen ? "w-[320px]" : "w-0 border-l-0",
-        )}
+        <aside
+          className={cn(
+            "hidden shrink-0 overflow-hidden border-l border-border bg-muted/20 transition-[width] duration-300 lg:flex",
+            isSettingsPanelOpen ? "w-[320px]" : "w-0 border-l-0",
+          )}
+        >
+          <div className="flex min-w-0 flex-1">
+            <SettingsPanel
+              value={settings}
+              onChange={setSettings}
+              className="flex-1"
+              onToggleCollapse={() => setIsSettingsPanelOpen(false)}
+            />
+          </div>
+        </aside>
+      </div>
+
+      <Dialog
+        open={isExternalDataConfirmOpen}
+        onOpenChange={(open) => {
+          if (open) {
+            setIsExternalDataConfirmOpen(true);
+          }
+        }}
       >
-        <div className="flex min-w-0 flex-1">
-          <SettingsPanel
-            value={settings}
-            onChange={setSettings}
-            className="flex-1"
-            onToggleCollapse={() => setIsSettingsPanelOpen(false)}
-          />
-        </div>
-      </aside>
-    </div>
+        <DialogContent
+          className="max-w-md rounded-2xl sm:max-w-md"
+          hideCloseButton
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          onInteractOutside={(event) => event.preventDefault()}
+        >
+          <DialogHeader>
+            <DialogTitle>確認外部資料查詢內容</DialogTitle>
+            <DialogDescription className="leading-6">
+              你已勾選「是否參考外部資料」。系統將把下列文字送至雲端 LLM，
+              以進行即時財務資料查詢。請確認內容無誤後再送出。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <div className="text-sm font-medium text-foreground">即將送出的查詢文字</div>
+            <Textarea
+              value={externalDataQueryDraft}
+              onChange={(event) => setExternalDataQueryDraft(event.target.value)}
+              className="min-h-[112px] rounded-xl border-input bg-secondary text-sm leading-6 text-foreground"
+            />
+          </div>
+
+          <div className="text-sm leading-6 text-muted-foreground">
+            你可以直接修改上方文字。點選「確認」後才會正式送出查詢；若不需要進行外部資料查詢，請按「不採用」。
+          </div>
+
+          <DialogFooter className="gap-2 sm:justify-end">
+            <Button type="button" variant="outline" onClick={() => void rejectPendingSubmission()}>
+              不採用
+            </Button>
+            <Button type="button" onClick={confirmPendingSubmission}>
+              確認
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
