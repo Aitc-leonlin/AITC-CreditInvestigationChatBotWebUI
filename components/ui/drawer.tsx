@@ -1,5 +1,7 @@
 "use client";
 
+// NOTE: This file is currently not used by other app features.
+
 import * as React from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 

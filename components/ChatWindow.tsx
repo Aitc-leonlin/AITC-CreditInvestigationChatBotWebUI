@@ -332,7 +332,7 @@ function formatConversationForCopy(messages: Message[]) {
     .filter((message) => message.role === "user" || message.role === "assistant")
     .map(
       (message) =>
-        `${message.role === "user" ? "使用者" : "助理"}: ${message.content}`,
+        `${message.role === "user" ? "使用者" : "AI助理"}: ${message.content}`,
     )
     .join("\n\n");
 }
@@ -516,7 +516,7 @@ export function ChatLayout(props: { content: ReactNode; footer: ReactNode }) {
     <StickToBottom>
       <StickyToBottomContent
         className="absolute inset-0"
-        contentClassName="py-8 px-2"
+        contentClassName="py-2 px-2"
         content={props.content}
         footer={
           <div className="sticky bottom-8 px-2">
@@ -779,7 +779,7 @@ function SettingsPanel(props: {
                   })
                 }
                 text="是否參考資料倉儲"
-                icon={<Database className="h-4 w-4" />}
+                icon={<Database className="h-[18px] w-[18px]" />}
               />
 
               <ReferenceSettingCheckbox
@@ -800,10 +800,10 @@ function SettingsPanel(props: {
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm leading-6 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100">
           <div className="font-semibold">查詢設定說明</div>
           <div className="mt-1">
-            若已選擇公司與區間，送出對話時系統會自動將公司與時間組成查詢前言，並在下一行接續原始問題，再發送至 AI Agent。
+            若已選擇公司與區間，送出對話時系統會自動將公司與時間組成查詢前言，並在下一行接續原始問題，再發送問題。
           </div>
           <div className="mt-1">
-            另外可控制是否讓後端在回答時參考專家指引、資料倉儲與外部資料。
+             <br />並可同時控制是否讓AI在回答時引用專家指引、資料倉儲或外部資料。
           </div>
           <div className="mt-2 rounded-md bg-white/70 px-2 py-2 text-xs leading-6 dark:bg-black/20">
             範例：
@@ -1008,10 +1008,7 @@ export function ChatWindow(props: {
 
   const activeMessages = activeSession?.messages ?? [];
   const selectedConditionSummary = getSelectedConditionSummary(settings);
-  const selectedCompany = useMemo(
-    () => getCompanyByLabel(settings.company),
-    [settings.company],
-  );
+  const selectedCompany = getCompanyByLabel(settings.company);
   const openSidePanelsCount = Number(isHistoryPanelOpen) + Number(isSettingsPanelOpen);
   const contentMaxWidthClass =
     openSidePanelsCount === 2

@@ -3,10 +3,9 @@ import { ArrowRight, Bot, FileText } from "lucide-react";
 
 const entryCards = [
   {
-    title: "AI Chat Bot",
+    title: "授信 AI 助理",
     description: "進入授信 AI 助理，針對公司財務、授信風險與資料倉儲內容進行多輪問答。",
     href: "/chatbot",
-    cta: "開始對話",
     icon: Bot,
     accentClassName: "bg-[#57A6D4] text-white",
   },
@@ -14,7 +13,6 @@ const entryCards = [
     title: "徵審報告產生器",
     description: "進入報告產生流程，依輸入內容整理徵審分析與結構化報告草稿。",
     href: "/report-generator",
-    cta: "產生報告",
     icon: FileText,
     accentClassName: "bg-[#2F8F83] text-white",
   },
@@ -27,10 +25,10 @@ export default function Home() {
         <section className="max-w-3xl">
           <div className="text-sm font-semibold text-[#2d689d]">AITC Credit Investigation</div>
           <h1 className="mt-3 text-3xl font-semibold leading-tight text-[#12344a] md:text-5xl">
-            請選擇要使用的功能
+            徵審授信AI平台
           </h1>
           <p className="mt-4 text-base leading-7 text-[#4c7187] md:text-lg">
-            進入 AI Chat Bot 進行授信風險問答，或使用徵審報告產生器建立分析報告草稿。
+            點選進入授信AI助理進行授信風險問答，或使用徵審報告產生器建立分析報告草稿。
           </p>
         </section>
 
@@ -54,10 +52,6 @@ export default function Home() {
                 <p className="mt-3 min-h-[72px] text-sm leading-6 text-[#4c7187] md:text-base">
                   {entry.description}
                 </p>
-                <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-[#cfe4f2] bg-[#f8fcff] px-4 py-2 text-sm font-medium text-[#12344a]">
-                  <span>{entry.cta}</span>
-                  <ArrowRight className="h-4 w-4" />
-                </div>
               </Link>
             );
           })}

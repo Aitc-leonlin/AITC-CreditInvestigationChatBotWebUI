@@ -21,6 +21,8 @@ export const BACKEND_API_PATHS = {
   chatRetrieval: "/api/chat/retrieval",
   chatRetrievalAgents: "/api/chat/retrieval-agents",
   chatStructuredOutput: "/api/chat/structured-output",
+  reportGeneratorGenerate: "/api/report-generator/generate",
+  reportGeneratorHistory: "/api/report-generator/history",
   retrievalIngest: "/api/retrieval/ingest",
   expertKnowledgeGenerateAnchor: "/api/expert-knowledge/generate-anchor",
   expertKnowledgeGenerateAnalysis:

@@ -219,24 +219,16 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
     () => getCompaniesByIndustry(industry),
     [industry],
   );
-  const selectedCompanySummary = useMemo(() => {
-    if (companyLabel === NO_COMPANY_VALUE) {
-      return "不指定特定公司";
-    }
-
-    if (!companyLabel) {
-      return "尚未選擇公司";
-    }
-
-    return getCompanyPromptValue(companyLabel);
-  }, [companyLabel]);
-  const selectedIndustryIcon = useMemo(
-    () =>
-      INDUSTRY_ICON_MAP[industry as keyof typeof INDUSTRY_ICON_MAP] ?? (
-        <BusinessCenterIcon {...INDUSTRY_ICON_PROPS} />
-      ),
-    [industry],
-  );
+  const selectedCompanySummary =
+    companyLabel === NO_COMPANY_VALUE
+      ? "不指定特定公司"
+      : companyLabel
+        ? getCompanyPromptValue(companyLabel)
+        : "尚未選擇公司";
+  const selectedIndustryIcon =
+    INDUSTRY_ICON_MAP[industry as keyof typeof INDUSTRY_ICON_MAP] ?? (
+      <BusinessCenterIcon {...INDUSTRY_ICON_PROPS} />
+    );
   const selectedEntry = useMemo(
     () => entries.find((entry) => entry.id === props.entryId) ?? null,
     [entries, props.entryId],

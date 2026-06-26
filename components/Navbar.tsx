@@ -4,9 +4,12 @@ import { cn } from "@/utils/cn";
 import { usePathname } from "next/navigation";
 import { ReactNode, useState } from "react";
 import Link from "next/link";
+import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import HistoryEduIcon from "@mui/icons-material/HistoryEdu";
+import HomeIcon from "@mui/icons-material/Home";
 import PsychologyAltIcon from "@mui/icons-material/PsychologyAlt";
 import FunctionsIcon from "@mui/icons-material/Functions";
-import { Bot, Database, FileText, Home } from "lucide-react";
+import { Bot, Database, FileText } from "lucide-react";
 import {
   METRIC_FORMULA_CATEGORIES,
   getMetricFormulaCategoryLabel,
@@ -26,11 +29,15 @@ export const ActiveLink = (props: {
   href: string;
   children: ReactNode;
   icon: ReactNode;
+  activeClassName?: string;
+  exact?: boolean;
 }) => {
   const pathname = usePathname();
   const isActive =
     pathname === props.href ||
-    (props.href !== "/" && pathname.startsWith(`${props.href}/`));
+    (!props.exact &&
+      props.href !== "/" &&
+      pathname.startsWith(`${props.href}/`));
   return (
     <Link
       href={props.href}
@@ -39,7 +46,9 @@ export const ActiveLink = (props: {
         "flex items-center gap-2 whitespace-nowrap",
         !isActive &&
           "hover:border-[#57A6D4] hover:bg-[#eef7fc] hover:text-[#0f3f5d]",
-        isActive && "cursor-default border-[#57A6D4] bg-[#57A6D4] text-white",
+        isActive &&
+          (props.activeClassName ??
+            "cursor-default border-[#57A6D4] bg-[#57A6D4] text-white"),
       )}
       aria-current={isActive ? "page" : undefined}
     >
@@ -58,6 +67,92 @@ export const ActiveLink = (props: {
 
 const navButtonClassName =
   "rounded-full border border-[#cfe4f2] bg-white px-4 py-2 text-sm font-medium text-[#12344a] transition-colors duration-200 flex items-center gap-2 whitespace-nowrap hover:border-[#57A6D4] hover:bg-[#eef7fc] hover:text-[#0f3f5d]";
+
+function getTopBarTitleConfig(pathname: string) {
+  if (pathname.startsWith("/report-generator")) {
+    return {
+      title: "徵審報告產生器",
+      icon: <FileText className="h-5 w-5" />,
+      className:
+        "border-teal-200 bg-teal-50/80 text-teal-900 shadow-[0_8px_24px_rgba(15,118,110,0.10)]",
+      accentClassName: "bg-teal-600",
+      labelClassName: "text-teal-700",
+    };
+  }
+
+  if (
+    pathname.startsWith("/chatbot") ||
+    pathname.startsWith("/expert-knowledge") ||
+    pathname.startsWith("/external-knowledge")
+  ) {
+    return {
+      title: "授信 AI 助理",
+      icon: <Bot className="h-5 w-5" />,
+      className:
+        "border-[#cfe4f2] bg-[#eef7fc]/90 text-[#12344a] shadow-[0_8px_24px_rgba(48,169,216,0.12)]",
+      accentClassName: "bg-[#57A6D4]",
+      labelClassName: "text-[#2d689d]",
+    };
+  }
+
+  return null;
+}
+
+export function TopBarTitle() {
+  const pathname = usePathname();
+  const config = getTopBarTitleConfig(pathname);
+
+  if (!config) return null;
+
+  return (
+    <span
+      className={cn(
+        "inline-flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2",
+        config.className,
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-white",
+          config.accentClassName,
+        )}
+      >
+        {config.icon}
+      </span>
+      <span
+        aria-hidden="true"
+        className={cn("h-8 w-1 shrink-0 rounded-full", config.accentClassName)}
+      />
+      <span className="min-w-0">
+        <span
+          className={cn(
+            "block text-[10px] font-semibold uppercase leading-none",
+            config.labelClassName,
+          )}
+        >
+          CURRENT
+        </span>
+        <span className="mt-1 block truncate text-base font-semibold leading-tight md:text-lg">
+          {config.title}
+        </span>
+      </span>
+    </span>
+  );
+}
+
+function HomeNavButton() {
+  return (
+    <Link
+      href="/"
+      aria-label="回到主頁"
+      title="回到主頁"
+      className="flex h-9 w-9 items-center justify-center rounded-full border border-[#cfe4f2] bg-white text-[#12344a] transition-colors duration-200 hover:border-[#57A6D4] hover:bg-[#eef7fc] hover:text-[#0f3f5d]"
+    >
+      <HomeIcon sx={{ fontSize: 18 }} />
+    </Link>
+  );
+}
 
 function FormulaHelperDialog() {
   const [selectedCategory, setSelectedCategory] =
@@ -198,15 +293,18 @@ export function Navbar() {
   if (pathname === "/") return null;
 
   return (
-    <nav>
-      <div className="flex flex-wrap items-center gap-2 rounded-full border border-[#d6e8f4] bg-[#f8fcff] p-1.5">
+    <nav className="flex min-w-0 items-center overflow-x-auto">
+      <div className="mr-[15px]">
+        <HomeNavButton />
+      </div>
+      <div className="flex flex-nowrap items-center gap-2 rounded-full border border-[#d6e8f4] bg-[#f8fcff] p-1.5">
         {isChatbotSection ? (
           <>
             <ActiveLink
               href="/chatbot"
-              icon={<Bot className="h-[18px] w-[18px]" />}
+              icon={<AutoAwesomeIcon sx={{ fontSize: 18 }} />}
             >
-              AI Chat Bot
+              授信AI助理
             </ActiveLink>
             <ActiveLink
               href="/expert-knowledge"
@@ -224,12 +322,23 @@ export function Navbar() {
           </>
         ) : null}
         {isReportGeneratorSection ? (
-          <ActiveLink
-            href="/report-generator"
-            icon={<FileText className="h-[18px] w-[18px]" />}
-          >
-            徵審報告產生器
-          </ActiveLink>
+          <>
+            <ActiveLink
+              href="/report-generator"
+              icon={<FileText className="h-[18px] w-[18px]" />}
+              activeClassName="cursor-default border-[rgb(47_143_131)] bg-[rgb(47_143_131)] text-white"
+              exact
+            >
+              徵審報告產生器
+            </ActiveLink>
+            <ActiveLink
+              href="/report-generator/history"
+              icon={<HistoryEduIcon sx={{ fontSize: 18 }} />}
+              activeClassName="cursor-default border-[rgb(47_143_131)] bg-[rgb(47_143_131)] text-white"
+            >
+              歷史報告
+            </ActiveLink>
+          </>
         ) : null}
       </div>
     </nav>

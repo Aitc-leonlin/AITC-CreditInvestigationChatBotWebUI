@@ -34,8 +34,8 @@ export default function AgentsPage() {
         <li className="hidden text-l md:block">
           💻
           <span className="ml-2">
-            You can find the prompt, model, and schema logic for this use-case
-            in <code>app/api/chat/structured_output/route.ts</code>.
+            This use-case calls the external backend endpoint configured in{" "}
+            <code>utils/api.ts</code>.
           </span>
         </li>
         <li className="hidden text-l md:block">

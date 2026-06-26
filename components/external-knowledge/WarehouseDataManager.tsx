@@ -21,7 +21,7 @@ import StorefrontIcon from "@mui/icons-material/Storefront";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 import TvIcon from "@mui/icons-material/Tv";
 import { Box, Chip } from "@mui/material";
-import { ExternalLink, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Database, ExternalLink, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import {
   DataGrid,
   type GridColDef,
@@ -521,7 +521,7 @@ export function WarehouseDataManager() {
               </p>
             </div>
             <div className="pointer-events-none ml-auto hidden flex-1 justify-end text-[#57A6D4]/25 md:flex">
-              <InventoryIcon sx={{ fontSize: "clamp(112px, 14vw, 180px)" }} />
+              <Database className="h-[clamp(112px,14vw,180px)] w-[clamp(112px,14vw,180px)]" />
             </div>
 
           </div>

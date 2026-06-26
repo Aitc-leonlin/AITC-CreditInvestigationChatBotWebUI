@@ -1,5 +1,5 @@
 import "./globals.css";
-import { Navbar } from "@/components/Navbar";
+import { Navbar, TopBarTitle } from "@/components/Navbar";
 import { Toaster } from "@/components/ui/sonner";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 
@@ -98,15 +98,18 @@ export default function RootLayout({
       </head>
       <body>
         <NuqsAdapter>
-          <div className="bg-secondary grid h-[100dvh] grid-rows-[auto,1fr]">
-            <div className="px-4 pt-4 pb-[5px]">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-                <a href="/" className="flex items-center gap-2">
-                  <Logo />
-                </a>
+          <div className="bg-secondary grid h-[100dvh] grid-rows-[80px_minmax(0,1fr)]">
+            <header className="h-20 px-4">
+              <div className="flex h-full min-w-0 items-center justify-between gap-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <a href="/" className="flex shrink-0 items-center gap-2">
+                    <Logo />
+                  </a>
+                  <TopBarTitle />
+                </div>
                 <Navbar />
               </div>
-            </div>
+            </header>
             <div className="bg-background relative mx-4 grid rounded-t-2xl border border-input border-b-0">
               <div className="absolute inset-0">{children}</div>
             </div>
