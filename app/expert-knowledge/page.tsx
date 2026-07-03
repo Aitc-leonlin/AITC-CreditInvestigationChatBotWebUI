@@ -1,24 +1,92 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import ApartmentIcon from "@mui/icons-material/Apartment";
+import BusinessCenterIcon from "@mui/icons-material/BusinessCenter";
+import CheckroomIcon from "@mui/icons-material/Checkroom";
+import ConstructionIcon from "@mui/icons-material/Construction";
+import DirectionsCarIcon from "@mui/icons-material/DirectionsCar";
+import ElectricalServicesIcon from "@mui/icons-material/ElectricalServices";
+import EngineeringIcon from "@mui/icons-material/Engineering";
+import FoundationIcon from "@mui/icons-material/Foundation";
+import HealthAndSafetyIcon from "@mui/icons-material/HealthAndSafety";
+import LocalMallIcon from "@mui/icons-material/LocalMall";
+import MemoryIcon from "@mui/icons-material/Memory";
 import PsychologyAltIcon from "@mui/icons-material/PsychologyAlt";
+import PrecisionManufacturingIcon from "@mui/icons-material/PrecisionManufacturing";
+import SettingsInputAntennaIcon from "@mui/icons-material/SettingsInputAntenna";
+import StorefrontIcon from "@mui/icons-material/Storefront";
+import TravelExploreIcon from "@mui/icons-material/TravelExplore";
+import TvIcon from "@mui/icons-material/Tv";
 import { Box, Chip } from "@mui/material";
 import {
   DataGrid,
   type GridColDef,
   type GridRenderCellParams,
+  type GridPaginationModel,
 } from "@mui/x-data-grid";
-import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { CalendarClock, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   EXPERT_KNOWLEDGE_ALL_COMPANY_VALUE,
   type ExpertKnowledgeEntry,
-  readExpertKnowledgeEntries,
-  writeExpertKnowledgeEntries,
 } from "@/data/expertKnowledge";
+import {
+  deleteExpertKnowledgeEntry,
+  fetchExpertKnowledgeEntries,
+} from "@/data/expertKnowledgeApi";
+
+const INDUSTRY_ICON_PROPS = { sx: { fontSize: 16, color: "#075985" } } as const;
+const TITLE_INDUSTRY_ICON_PROPS = { sx: { fontSize: 18, color: "#0f172a" } } as const;
+
+const INDUSTRY_ICON_MAP = {
+  水泥建材: <FoundationIcon {...INDUSTRY_ICON_PROPS} />,
+  半導體: <MemoryIcon {...INDUSTRY_ICON_PROPS} />,
+  生技醫療: <HealthAndSafetyIcon {...INDUSTRY_ICON_PROPS} />,
+  光電: <TvIcon {...INDUSTRY_ICON_PROPS} />,
+  汽車工業: <DirectionsCarIcon {...INDUSTRY_ICON_PROPS} />,
+  其他電子: <ElectricalServicesIcon {...INDUSTRY_ICON_PROPS} />,
+  金融保險: <ApartmentIcon {...INDUSTRY_ICON_PROPS} />,
+  建設營造: <ConstructionIcon {...INDUSTRY_ICON_PROPS} />,
+  紡織纖維: <CheckroomIcon {...INDUSTRY_ICON_PROPS} />,
+  通信網路: <SettingsInputAntennaIcon {...INDUSTRY_ICON_PROPS} />,
+  貿易百貨: <LocalMallIcon {...INDUSTRY_ICON_PROPS} />,
+  電子通路: <StorefrontIcon {...INDUSTRY_ICON_PROPS} />,
+  電子零組件: <PrecisionManufacturingIcon {...INDUSTRY_ICON_PROPS} />,
+  電線電纜: <ElectricalServicesIcon {...INDUSTRY_ICON_PROPS} />,
+  機電設備: <EngineeringIcon {...INDUSTRY_ICON_PROPS} />,
+  觀光旅遊: <TravelExploreIcon {...INDUSTRY_ICON_PROPS} />,
+} as const;
+
+const TITLE_INDUSTRY_ICON_MAP = {
+  水泥建材: <FoundationIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  半導體: <MemoryIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  生技醫療: <HealthAndSafetyIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  光電: <TvIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  汽車工業: <DirectionsCarIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  其他電子: <ElectricalServicesIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  金融保險: <ApartmentIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  建設營造: <ConstructionIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  紡織纖維: <CheckroomIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  通信網路: <SettingsInputAntennaIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  貿易百貨: <LocalMallIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  電子通路: <StorefrontIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  電子零組件: <PrecisionManufacturingIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  電線電纜: <ElectricalServicesIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  機電設備: <EngineeringIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+  觀光旅遊: <TravelExploreIcon {...TITLE_INDUSTRY_ICON_PROPS} />,
+} as const;
 
 function renderCompanyLabel(entry: ExpertKnowledgeEntry) {
   return entry.companyLabel === EXPERT_KNOWLEDGE_ALL_COMPANY_VALUE ||
@@ -27,37 +95,92 @@ function renderCompanyLabel(entry: ExpertKnowledgeEntry) {
     : entry.companyLabel;
 }
 
+function formatDateTime(value: string | null | undefined, fallback: string) {
+  const trimmedValue = String(value ?? "").trim();
+  if (!trimmedValue) return fallback;
+
+  const date = new Date(trimmedValue);
+  if (Number.isNaN(date.getTime())) return trimmedValue;
+
+  return date.toLocaleString("zh-TW");
+}
+
 export default function ExpertKnowledgePage() {
   const [entries, setEntries] = useState<ExpertKnowledgeEntry[]>([]);
+  const [detailEntry, setDetailEntry] = useState<ExpertKnowledgeEntry | null>(null);
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [debouncedSearchKeyword, setDebouncedSearchKeyword] = useState("");
+  const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
+    page: 0,
+    pageSize: 10,
+  });
+  const [rowCount, setRowCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
-    setEntries(readExpertKnowledgeEntries());
-  }, []);
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearchKeyword(searchKeyword);
+      setPaginationModel((current) => ({ ...current, page: 0 }));
+    }, 350);
 
-  const filteredEntries = useMemo(() => {
-    const keyword = searchKeyword.trim().toLowerCase();
-    if (!keyword) return entries;
+    return () => window.clearTimeout(timeout);
+  }, [searchKeyword]);
 
-    return entries.filter((entry) =>
-      [
-        entry.title,
-        entry.industry,
-        renderCompanyLabel(entry),
-        entry.dataSource,
-        entry.anchorDescription,
-        entry.systemPrompt,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(keyword),
-    );
-  }, [entries, searchKeyword]);
+  useEffect(() => {
+    let isMounted = true;
 
-  function handleDelete(entryId: string) {
-    const nextEntries = entries.filter((entry) => entry.id !== entryId);
-    setEntries(nextEntries);
-    writeExpertKnowledgeEntries(nextEntries);
+    async function loadEntries() {
+      try {
+        setIsLoading(true);
+        const result = await fetchExpertKnowledgeEntries({
+          page: paginationModel.page,
+          pageSize: paginationModel.pageSize,
+          search: debouncedSearchKeyword,
+        });
+
+        if (!isMounted) return;
+        setEntries(result.entries);
+        setRowCount(result.total);
+      } catch (error) {
+        if (!isMounted) return;
+        toast.error(
+          error instanceof Error ? error.message : "讀取專家知識庫失敗",
+        );
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    }
+
+    loadEntries();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [debouncedSearchKeyword, paginationModel.page, paginationModel.pageSize]);
+
+  async function handleDelete(entryId: string) {
+    try {
+      await deleteExpertKnowledgeEntry(entryId);
+      toast.success("已刪除專家指引");
+      if (entries.length === 1 && paginationModel.page > 0) {
+        setPaginationModel((current) => ({
+          ...current,
+          page: current.page - 1,
+        }));
+        return;
+      }
+      const result = await fetchExpertKnowledgeEntries({
+        page: paginationModel.page,
+        pageSize: paginationModel.pageSize,
+        search: debouncedSearchKeyword,
+      });
+      setEntries(result.entries);
+      setRowCount(result.total);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "刪除專家指引失敗",
+      );
+    }
   }
 
   const columns: GridColDef<ExpertKnowledgeEntry>[] = [
@@ -86,7 +209,14 @@ export default function ExpertKnowledgePage() {
       ) => (
         <div className="flex h-full items-center">
           <Chip
-            label={params.row.industry || "未分類產業"}
+            label={
+              <span className="flex items-center gap-1.5">
+                <span>{params.row.industry || "未分類產業"}</span>
+                {INDUSTRY_ICON_MAP[
+                  params.row.industry as keyof typeof INDUSTRY_ICON_MAP
+                ] ?? <BusinessCenterIcon {...INDUSTRY_ICON_PROPS} />}
+              </span>
+            }
             size="small"
             sx={{
               fontWeight: 700,
@@ -134,10 +264,23 @@ export default function ExpertKnowledgePage() {
       renderCell: (
         params: GridRenderCellParams<ExpertKnowledgeEntry, string>,
       ) => (
-        <div className="flex h-full items-center py-3 text-sm leading-6 text-slate-700">
-          {params.row.updatedAt
-            ? new Date(params.row.updatedAt).toLocaleString("zh-TW")
-            : "-"}
+        <div className="flex h-full items-center gap-2 py-3 text-sm leading-6 text-slate-700">
+          <CalendarClock className="h-4 w-4 text-slate-400" />
+          <span>{formatDateTime(params.row.updatedAt, "-")}</span>
+        </div>
+      ),
+    },
+    {
+      field: "createdAt",
+      headerName: "建立時間",
+      minWidth: 180,
+      flex: 0.8,
+      renderCell: (
+        params: GridRenderCellParams<ExpertKnowledgeEntry, string>,
+      ) => (
+        <div className="flex h-full items-center gap-2 py-3 text-sm leading-6 text-slate-700">
+          <CalendarClock className="h-4 w-4 text-slate-400" />
+          <span>{formatDateTime(params.row.createdAt, "-")}</span>
         </div>
       ),
     },
@@ -153,11 +296,14 @@ export default function ExpertKnowledgePage() {
       headerAlign: "right",
       renderCell: (params: GridRenderCellParams<ExpertKnowledgeEntry>) => (
         <div className="flex h-full items-center justify-end gap-2">
-          <Button type="button" variant="outline" size="sm" asChild>
-            <Link href={`/expert-knowledge/${params.row.id}`}>
-              <Eye className="h-4 w-4" />
-              查看
-            </Link>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setDetailEntry(params.row)}
+          >
+            <Eye className="h-4 w-4" />
+            查看
           </Button>
           <Button type="button" variant="outline" size="sm" asChild>
             <Link href={`/expert-knowledge/${params.row.id}/edit`}>
@@ -178,8 +324,6 @@ export default function ExpertKnowledgePage() {
       ),
     },
   ];
-
-  const paginationModel = useMemo(() => ({ page: 0, pageSize: 10 }), []);
 
   return (
     <div className="h-full overflow-y-auto">
@@ -250,14 +394,23 @@ export default function ExpertKnowledgePage() {
             >
               <DataGrid
                 autoHeight
-                rows={filteredEntries}
+                rows={entries}
                 columns={columns}
+                loading={isLoading}
                 disableRowSelectionOnClick
                 disableColumnFilter
                 disableDensitySelector
                 disableColumnSelector
+                initialState={{
+                  sorting: {
+                    sortModel: [{ field: "createdAt", sort: "desc" }],
+                  },
+                }}
+                paginationMode="server"
                 paginationModel={paginationModel}
-                pageSizeOptions={[10]}
+                onPaginationModelChange={setPaginationModel}
+                rowCount={rowCount}
+                pageSizeOptions={[5, 10, 25, { value: -1, label: 'All' }]}
                 localeText={{
                   noRowsLabel: "目前沒有符合條件的專家指引",
                 }}
@@ -266,6 +419,120 @@ export default function ExpertKnowledgePage() {
             </Box>
           </div>
         </section>
+
+        <Dialog open={!!detailEntry} onOpenChange={(open) => !open && setDetailEntry(null)}>
+          <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>
+                <span className="flex items-center gap-2">
+                  <span>{detailEntry?.title || "專家指引詳情"}</span>
+                  {detailEntry
+                    ? TITLE_INDUSTRY_ICON_MAP[
+                        detailEntry.industry as keyof typeof TITLE_INDUSTRY_ICON_MAP
+                      ] ?? <BusinessCenterIcon {...TITLE_INDUSTRY_ICON_PROPS} />
+                    : null}
+                </span>
+              </DialogTitle>
+              <DialogDescription>
+                查看專家知識的適用情境、資料範圍與完整指引內容。
+              </DialogDescription>
+            </DialogHeader>
+
+            {detailEntry ? (
+              <div className="grid gap-4">
+                <div className="flex flex-wrap gap-2">
+                  <Chip
+                    label={
+                      <span className="flex items-center gap-1.5">
+                        <span>{detailEntry.industry || "未分類產業"}</span>
+                        {INDUSTRY_ICON_MAP[
+                          detailEntry.industry as keyof typeof INDUSTRY_ICON_MAP
+                        ] ?? <BusinessCenterIcon {...INDUSTRY_ICON_PROPS} />}
+                      </span>
+                    }
+                    size="small"
+                    sx={{
+                      fontWeight: 700,
+                      color: "#075985",
+                      backgroundColor: "#e0f2fe",
+                      borderRadius: "999px",
+                    }}
+                  />
+                  <Chip
+                    label={renderCompanyLabel(detailEntry)}
+                    size="small"
+                    sx={{
+                      fontWeight: 700,
+                      color: "#7c2d12",
+                      backgroundColor: "#ffedd5",
+                      borderRadius: "999px",
+                    }}
+                  />
+                  <Chip
+                    label={detailEntry.dataSource || "財務報表"}
+                    size="small"
+                    sx={{
+                      fontWeight: 700,
+                      color: "#475569",
+                      backgroundColor: "#f1f5f9",
+                      borderRadius: "999px",
+                    }}
+                  />
+                  <Chip
+                    label={
+                      <span className="flex items-center gap-1.5">
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        <span>
+                          更新時間 {formatDateTime(detailEntry.updatedAt, "未提供")}
+                        </span>
+                      </span>
+                    }
+                    size="small"
+                    sx={{
+                      fontWeight: 700,
+                      color: "#334155",
+                      backgroundColor: "#e2e8f0",
+                      borderRadius: "999px",
+                    }}
+                  />
+                  <Chip
+                    label={
+                      <span className="flex items-center gap-1.5">
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        <span>
+                          建立時間 {formatDateTime(detailEntry.createdAt, "未提供")}
+                        </span>
+                      </span>
+                    }
+                    size="small"
+                    sx={{
+                      fontWeight: 700,
+                      color: "#334155",
+                      backgroundColor: "#e2e8f0",
+                      borderRadius: "999px",
+                    }}
+                  />
+                </div>
+
+                <div className="grid gap-3">
+                  <section className="rounded-2xl border border-sky-100 bg-sky-50/70 px-4 py-3">
+                    <h3 className="text-sm font-bold text-sky-900">錨定點</h3>
+                    <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                      {detailEntry.anchorDescription || "未提供錨定點"}
+                    </div>
+                  </section>
+
+                  <section className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <h3 className="text-sm font-bold text-slate-900">專家指引</h3>
+                    <div className="mt-2 whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                      {detailEntry.systemPrompt || "未提供專家指引"}
+                    </div>
+                  </section>
+                </div>
+              </div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

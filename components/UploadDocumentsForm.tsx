@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import DEFAULT_RETRIEVAL_TEXT from "@/data/DefaultRetrievalText";
-import { BACKEND_API_PATHS, buildBackendApiUrl } from "@/utils/api";
+import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 
@@ -13,8 +13,8 @@ export function UploadDocumentsForm() {
     e.preventDefault();
     setIsLoading(true);
     // 將貼上的檢索文本送到後端 ingest API，建立索引用於後續檢索。
-    const response = await fetch(
-      buildBackendApiUrl(BACKEND_API_PATHS.retrievalIngest),
+    const response = await fetchBackendApi(
+      BACKEND_API_PATHS.retrievalIngest,
       {
       method: "POST",
       body: JSON.stringify({

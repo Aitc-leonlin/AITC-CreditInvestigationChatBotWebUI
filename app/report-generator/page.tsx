@@ -3,12 +3,16 @@
 import { type ReactNode, useState } from "react";
 import Image from "next/image";
 import {
+  AlertCircle,
+  AlertTriangle,
   BarChart3,
   Calendar,
   Check,
   ChevronDown,
   CircleCheck,
+  Clock,
   DollarSign,
+  FileCheck,
   FileText,
   Loader2,
   RefreshCw,
@@ -18,34 +22,118 @@ import {
   TrendingUp,
   User,
 } from "lucide-react";
+import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { COMPANY_OPTIONS, getCompanyByLabel } from "@/data/companyKnowledge";
-import { BACKEND_API_PATHS, buildBackendApiUrl } from "@/utils/api";
+import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
 
 const quarters = ["Q1", "Q2", "Q3", "Q4"];
 
-const progressItems = [
+type ProgressItem = {
+  label: string;
+  status: string;
+};
+
+type DashboardMetric = {
+  label: string;
+  value: string;
+  trend: string;
+  iconKey: "barChart" | "trendingUp" | "scale" | "shieldCheck" | "dollarSign";
+  calculationStatus?: "complete" | "incomplete";
+  calculationReason?: string;
+};
+
+type FinancialTrend = {
+  period: string;
+  revenue: number | null;
+  netIncome: number | null;
+  grossMargin: number | null;
+};
+
+type ReportDashboard = {
+  summaryItems: string[];
+  progressItems: ProgressItem[];
+  progressPercent: number;
+  metricsTitle: string;
+  metrics: DashboardMetric[];
+  financialTrends: FinancialTrend[];
+};
+
+type ReportStatus = "idle" | "generating" | "interrupted" | "completed";
+
+const idleProgressItems: ProgressItem[] = [
+  { label: "財務報表分析", status: "待產生" },
+  { label: "現金流量分析", status: "待產生" },
+  { label: "產業分析", status: "待產生" },
+  { label: "新聞風險分析", status: "待產生" },
+  { label: "AI 徵審結論生成", status: "待產生" },
+];
+
+const generatingProgressItems: ProgressItem[] = [
   { label: "財務報表分析", status: "完成" },
   { label: "現金流量分析", status: "完成" },
   { label: "產業分析", status: "完成" },
-  { label: "新聞風險分析", status: "完成" },
+  { label: "新聞風險分析", status: "處理中..." },
   { label: "AI 徵審結論生成", status: "處理中..." },
 ];
 
-const summaryItems = [
-  "台積電 2025 年營收持續成長，較去年同期成長 24.3%。",
-  "現金流量穩定，營運活動現金流充沛，財務結構健全。",
-  "半導體產業景氣持續擴張，AI 需求強勁，長期展望正向。",
-  "資本支出雖高，但在產業競爭力與技術領先下屬可接受範圍。",
-];
+const initialDashboard: ReportDashboard = {
+  summaryItems: ["尚未產生報告，產生完成後將顯示 AI 分析摘要。"],
+  progressItems: idleProgressItems,
+  progressPercent: 0,
+  metricsTitle: "關鍵財務指標",
+  metrics: [],
+  financialTrends: [],
+};
 
-const metrics = [
-  { label: "ROE", value: "18.2%", trend: "▲ 2.4% YoY", icon: BarChart3, tone: "blue" },
-  { label: "流動比率", value: "165%", trend: "▲ 12% YoY", icon: TrendingUp, tone: "cyan" },
-  { label: "負債比率", value: "42%", trend: "▼ 3% YoY", icon: Scale, tone: "green" },
-  { label: "利息保障倍數", value: "12.4", trend: "▲ 1.8 YoY", icon: ShieldCheck, tone: "teal" },
-  { label: "營收成長率", value: "24.3%", trend: "▲ 6.7% YoY", icon: TrendingUp, tone: "purple" },
-  { label: "每股盈餘 (EPS)", value: "45.32", trend: "▲ 15.2% YoY", icon: DollarSign, tone: "emerald" },
-];
+const completedProgressItems: ProgressItem[] = idleProgressItems.map((item) => ({
+  ...item,
+  status: "完成",
+}));
+
+const metricIconMap = {
+  barChart: BarChart3,
+  trendingUp: TrendingUp,
+  scale: Scale,
+  shieldCheck: ShieldCheck,
+  dollarSign: DollarSign,
+} as const;
+
+const reportStatusConfig = {
+  idle: {
+    label: "待產生",
+    Icon: Clock,
+    className: "border border-slate-200 bg-slate-100 text-slate-700",
+    iconClassName: "",
+  },
+  generating: {
+    label: "產生中",
+    Icon: Loader2,
+    className: "border border-amber-200 bg-amber-100 text-amber-800",
+    iconClassName: "animate-spin",
+  },
+  interrupted: {
+    label: "產生中斷",
+    Icon: AlertTriangle,
+    className: "border border-rose-200 bg-rose-100 text-rose-800",
+    iconClassName: "",
+  },
+  completed: {
+    label: "已產生",
+    Icon: FileCheck,
+    className: "border border-emerald-200 bg-emerald-100 text-emerald-800",
+    iconClassName: "",
+  },
+} as const;
 
 const reportSections = [
   "公司概要",
@@ -57,23 +145,13 @@ const reportSections = [
   "附錄：財務報表",
 ];
 
-const chartRows = [
-  { period: "2024 Q1", revenue: 46, profit: 14, margin: 49 },
-  { period: "2024 Q2", revenue: 50, profit: 15, margin: 51 },
-  { period: "2024 Q3", revenue: 56, profit: 17, margin: 53 },
-  { period: "2024 Q4", revenue: 60, profit: 17, margin: 52 },
-  { period: "2025 Q1", revenue: 62, profit: 17, margin: 51 },
-  { period: "2025 Q2", revenue: 64, profit: 19, margin: 53 },
-  { period: "2025 Q4", revenue: 66, profit: 21, margin: 54 },
-];
+function formatAmount(value: number) {
+  return `${value.toLocaleString("zh-TW")} 億元`;
+}
 
-const peers = [
-  { name: "台積電 (2330)", value: 53.1, highlight: true },
-  { name: "三星 (005930.KS)", value: 41.2 },
-  { name: "英特爾 (INTC)", value: 34.7 },
-  { name: "聯電 (2303)", value: 29.8 },
-  { name: "中芯國際 (0981.HK)", value: 21.4 },
-];
+function formatPercent(value: number) {
+  return `${value.toLocaleString("zh-TW")}%`;
+}
 
 function formatReportGeneratedAt(date: Date) {
   return new Intl.DateTimeFormat("zh-TW", {
@@ -121,20 +199,84 @@ function SelectField(props: {
   );
 }
 
-function MetricCard(props: { item: (typeof metrics)[number] }) {
-  const Icon = props.item.icon;
+function MetricCard(props: { item: DashboardMetric }) {
+  const Icon = metricIconMap[props.item.iconKey] ?? BarChart3;
+  const isIncomplete = props.item.calculationStatus === "incomplete";
+  const hasCalculationError = isIncomplete || Boolean(props.item.calculationReason);
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-5 py-4 shadow-sm">
-      <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-teal-50 text-teal-600">
-          <Icon className="h-5 w-5" />
-        </span>
-        <div>
-          <div className="text-sm font-medium text-slate-700">{props.item.label}</div>
-          <div className="mt-3 text-2xl font-semibold text-slate-950">{props.item.value}</div>
-          <div className="mt-2 text-xs font-semibold text-emerald-700">{props.item.trend}</div>
+    <div
+      className={`relative h-full rounded-lg border px-5 py-4 shadow-sm ${
+        hasCalculationError
+          ? "min-h-[160px] border-rose-200 bg-rose-50/80"
+          : "border-slate-200 bg-white"
+      }`}
+    >
+      <div className={`flex h-full flex-col ${hasCalculationError ? "min-h-[128px]" : ""}`}>
+        <div className="flex min-h-10 items-center gap-3">
+          <span
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+              hasCalculationError ? "bg-rose-100 text-rose-700" : "bg-teal-50 text-teal-600"
+            }`}
+          >
+            <Icon className="h-5 w-5" />
+          </span>
+          <div
+            className={`min-w-0 text-sm font-medium leading-5 ${
+              hasCalculationError ? "text-rose-800" : "text-slate-700"
+            }`}
+          >
+            {props.item.label}
+          </div>
         </div>
+
+        <div
+          className="flex flex-1 flex-col pt-4"
+        >
+          <div className="flex flex-1 flex-col justify-center">
+            <div
+              className={`text-2xl font-semibold leading-tight ${
+                hasCalculationError ? "text-rose-950" : "text-slate-950"
+              }`}
+            >
+              {props.item.value}
+            </div>
+            {props.item.calculationReason ? (
+              <div className="mt-2 text-xs font-semibold text-rose-700">計算異常</div>
+            ) : null}
+          </div>
+          <div
+            className={`pt-2 text-xs font-semibold ${
+              hasCalculationError ? "text-rose-700" : "text-emerald-700"
+            }`}
+          >
+            {props.item.trend}
+          </div>
+        </div>
+
+        {props.item.calculationReason ? (
+          <div className="mt-3 flex min-h-7 items-center">
+            <div className="group relative">
+              <button
+                type="button"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-rose-600 text-white shadow-sm transition-colors hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                aria-label={`查看${props.item.label}錯誤訊息`}
+                title="查看錯誤訊息"
+              >
+                <AlertCircle className="h-5 w-5" />
+              </button>
+              <div
+                role="tooltip"
+                className="pointer-events-none absolute bottom-9 left-0 z-30 w-[min(280px,calc(100vw-3rem))] translate-y-1 rounded-2xl border-2 border-rose-300 bg-white px-4 py-3 text-sm leading-6 text-rose-950 opacity-0 shadow-[0_14px_35px_rgba(15,23,42,0.18)] transition duration-150 before:absolute before:-bottom-2 before:left-5 before:h-4 before:w-4 before:rotate-45 before:border-b-2 before:border-r-2 before:border-rose-300 before:bg-white group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
+              >
+                <div className="mb-1 text-xs font-semibold text-rose-700">指標計算異常</div>
+                <div className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words pr-1">
+                  {props.item.calculationReason}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -168,6 +310,37 @@ function getFilenameFromContentDisposition(contentDisposition: string | null) {
   return contentDisposition.match(/filename="([^"]+)"/)?.[1] ?? "";
 }
 
+function getFallbackCompletedDashboard(year: string): ReportDashboard {
+  return {
+    summaryItems: ["徵審報告已成功產生，完整內容請開啟下載檔案查看。"],
+    progressItems: completedProgressItems,
+    progressPercent: 100,
+    metricsTitle: `關鍵財務指標（${year} Q1-Q4）`,
+    metrics: [],
+    financialTrends: [],
+  };
+}
+
+async function fetchReportDashboard(path: string) {
+  const response = await fetchBackendApi(path);
+  const json = await response.json().catch(() => null) as
+    | { dashboard?: ReportDashboard; detail?: string; error?: string }
+    | null;
+
+  if (!response.ok) {
+    throw new Error(json?.detail ?? json?.error ?? "報告資訊載入失敗");
+  }
+
+  if (!json?.dashboard) {
+    throw new Error("報告資訊格式不正確");
+  }
+
+  return {
+    ...json.dashboard,
+    financialTrends: json.dashboard.financialTrends ?? [],
+  };
+}
+
 export default function ReportGeneratorPage() {
   const [companyCode, setCompanyCode] = useState(
     "台灣積體電路製造股份有限公司 / 2330 / 台積電",
@@ -176,12 +349,19 @@ export default function ReportGeneratorPage() {
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [generationMessage, setGenerationMessage] = useState("");
   const [reportGeneratedAt, setReportGeneratedAt] = useState("");
+  const [reportDashboard, setReportDashboard] = useState<ReportDashboard>(initialDashboard);
+  const [reportStatus, setReportStatus] = useState<ReportStatus>("idle");
 
   const selectedCompany = getCompanyByLabel(companyCode);
   const reportCoverImage = selectedCompany?.imagePath ?? "";
   const selectedCompanyTitle = getCompanyTitleFromLabel(companyCode);
   const selectedCompanyFullName = getCompanyFullNameFromLabel(companyCode);
   const reportSubtitle = `${year} 年度徵審報告 Q1 ~ Q4`;
+  const reportStatusDetail = reportStatusConfig[reportStatus];
+  const ReportStatusIcon = reportStatusDetail.Icon;
+  const financialTrendRows = reportDashboard.financialTrends;
+  const trendStartYear = Number.isFinite(Number(year)) ? Number(year) - 1 : "";
+  const trendYearRange = trendStartYear ? `${trendStartYear} - ${year}` : year;
 
   async function generateReport() {
     const selectedCompanyCode = getCompanyCodeFromLabel(companyCode);
@@ -192,11 +372,20 @@ export default function ReportGeneratorPage() {
     }
 
     setIsGeneratingReport(true);
+    setReportStatus("generating");
     setGenerationMessage("");
     setReportGeneratedAt(formatReportGeneratedAt(new Date()));
+    setReportDashboard({
+      summaryItems: ["AI正在產生徵審報告與分析摘要..."],
+      progressItems: generatingProgressItems,
+      progressPercent: 72,
+      metricsTitle: `關鍵財務指標（${year} Q1-Q4）`,
+      metrics: [],
+      financialTrends: [],
+    });
 
     try {
-      const response = await fetch(buildBackendApiUrl(BACKEND_API_PATHS.reportGeneratorGenerate), {
+      const response = await fetchBackendApi(BACKEND_API_PATHS.reportGeneratorGenerate, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -232,11 +421,20 @@ export default function ReportGeneratorPage() {
       link.download = responseFilename || `${selectedCompanyCode}_${year}_credit_report.docx`;
       link.click();
       URL.revokeObjectURL(downloadUrl);
+      const dashboardPath = response.headers.get("x-report-dashboard-path");
+      if (dashboardPath) {
+        setReportDashboard(await fetchReportDashboard(dashboardPath));
+      } else {
+        setReportDashboard(getFallbackCompletedDashboard(year));
+      }
+      setReportStatus("completed");
       setGenerationMessage("徵審報告已成功產生並開始下載");
     } catch (error) {
+      setReportStatus("interrupted");
       setGenerationMessage(
         error instanceof Error ? error.message : "徵審報告產生請求失敗",
       );
+      setReportDashboard(initialDashboard);
     } finally {
       setIsGeneratingReport(false);
     }
@@ -319,7 +517,7 @@ export default function ReportGeneratorPage() {
         </aside>
 
         <section className="min-w-0 space-y-4">
-          <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="relative rounded-lg border border-slate-200 bg-white p-5 pb-16 shadow-sm">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
                 <div className="relative h-[122px] w-[250px] max-w-full shrink-0 overflow-hidden rounded-lg bg-white">
@@ -354,13 +552,13 @@ export default function ReportGeneratorPage() {
                 </div>
               </div>
 
-              <div className="flex flex-col items-start gap-5 lg:items-end">
-                <span className="inline-flex items-center gap-2 rounded-md bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-800">
-                  <Check className="h-4 w-4" />
-                  分析完成
-                </span>
-             
-              </div>
+              <span
+                className={`absolute bottom-5 right-5 inline-flex items-center gap-2 rounded-md px-4 py-2 text-sm font-semibold ${reportStatusDetail.className}`}
+                aria-live="polite"
+              >
+                <ReportStatusIcon className={`h-4 w-4 ${reportStatusDetail.iconClassName}`} />
+                {reportStatusDetail.label}
+              </span>
             </div>
           </div>
 
@@ -369,7 +567,7 @@ export default function ReportGeneratorPage() {
               <h2 className="text-lg font-semibold text-slate-950">AI 分析摘要</h2>
               <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50/70 p-4">
                 <div className="space-y-4">
-                  {summaryItems.map((item) => (
+                  {reportDashboard.summaryItems.map((item) => (
                     <div key={item} className="flex gap-3 text-sm leading-6 text-slate-900">
                       <CircleCheck className="mt-0.5 h-5 w-5 shrink-0 fill-emerald-600 text-white" />
                       <span>{item}</span>
@@ -382,18 +580,19 @@ export default function ReportGeneratorPage() {
             <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-950">報告產生進度</h2>
               <div className="mt-4 space-y-3">
-                {progressItems.map((item, index) => {
+                {reportDashboard.progressItems.map((item) => {
                   const done = item.status === "完成";
+                  const processing = item.status.includes("處理中");
                   return (
                     <div key={item.label} className="grid grid-cols-[auto_1fr_auto] items-center gap-3">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-teal-600 text-white">
-                        {done ? <Check className="h-3.5 w-3.5" /> : <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      <span className={`flex h-5 w-5 items-center justify-center rounded-full text-white ${done ? "bg-teal-600" : processing ? "bg-amber-500" : "bg-slate-300"}`}>
+                        {done ? <Check className="h-3.5 w-3.5" /> : processing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                       </span>
                       <div className="grid grid-cols-[auto_1fr] items-center gap-4">
                         <span className="text-sm font-semibold text-slate-800">{item.label}</span>
                         <span className="h-px bg-slate-200" />
                       </div>
-                      <span className={done ? "text-sm font-semibold text-teal-700" : "text-sm text-slate-500"}>
+                      <span className={done ? "text-sm font-semibold text-teal-700" : processing ? "text-sm font-semibold text-amber-600" : "text-sm text-slate-500"}>
                         {item.status}
                       </span>
                     </div>
@@ -402,23 +601,32 @@ export default function ReportGeneratorPage() {
               </div>
               <div className="mt-5 flex items-center gap-4">
                 <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-200">
-                  <div className="h-full w-[72%] rounded-full bg-teal-500" />
+                  <div
+                    className="h-full rounded-full bg-teal-500 transition-all"
+                    style={{ width: `${reportDashboard.progressPercent}%` }}
+                  />
                 </div>
-                <span className="text-base font-semibold text-teal-700">72%</span>
+                <span className="text-base font-semibold text-teal-700">
+                  {reportDashboard.progressPercent}%
+                </span>
               </div>
             </section>
           </div>
 
           <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">關鍵財務指標（2025 Q1-Q4）</h2>
+            <h2 className="text-base font-semibold text-slate-950">{reportDashboard.metricsTitle}</h2>
             <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
-              {metrics.map((item) => (
+              {reportDashboard.metrics.length ? reportDashboard.metrics.map((item) => (
                 <MetricCard key={item.label} item={item} />
-              ))}
+              )) : (
+                <div className="col-span-full rounded-md border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">
+                  產生報告後將顯示關鍵財務指標。
+                </div>
+              )}
             </div>
           </section>
 
-          <div className="grid gap-4 xl:grid-cols-[200px_minmax(0,1fr)_300px]">
+          <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
             <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-950">報告目錄</h2>
               <div className="mt-4 space-y-3">
@@ -434,73 +642,122 @@ export default function ReportGeneratorPage() {
             </section>
 
             <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-950">財務趨勢圖</h2>
-              <div className="mt-3 flex flex-wrap justify-center gap-8 text-sm text-slate-700">
-                <span className="flex items-center gap-2"><span className="h-3 w-8 rounded bg-teal-500" />營收（億元）</span>
-                <span className="flex items-center gap-2"><span className="h-3 w-8 rounded bg-green-300" />淨利（億元）</span>
-                <span className="flex items-center gap-2"><span className="h-1 w-8 rounded bg-blue-700" />毛利率（%）</span>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-lg font-semibold text-slate-950">財務趨勢圖</h2>
+                <span className="text-xs font-medium text-slate-500">
+                  {trendYearRange} Q1-Q4
+                </span>
               </div>
-              <div className="mt-5 grid min-h-[260px] grid-cols-[52px_1fr] gap-3">
-                <div className="flex flex-col justify-between pb-8 text-xs text-slate-700">
-                  <span>8,000</span>
-                  <span>6,000</span>
-                  <span>4,000</span>
-                  <span>2,000</span>
-                  <span>0</span>
-                </div>
-                <div className="relative border-b border-slate-300">
-                  <div className="absolute inset-0 grid grid-rows-4">
-                    <span className="border-t border-slate-200" />
-                    <span className="border-t border-slate-200" />
-                    <span className="border-t border-slate-200" />
-                    <span className="border-t border-slate-200" />
-                  </div>
-                  <div className="relative flex h-[220px] items-end justify-around gap-3 px-3">
-                    {chartRows.map((row, index) => (
-                      <div key={row.period} className="flex h-full min-w-0 flex-1 flex-col items-center justify-end gap-2">
-                        <div className="flex h-[190px] items-end gap-2">
-                          <span className="w-4 rounded-t bg-teal-500" style={{ height: `${row.revenue}%` }} />
-                          <span className="w-4 rounded-t bg-green-300" style={{ height: `${row.profit * 2}%` }} />
-                        </div>
-                        <span className="whitespace-nowrap text-xs text-slate-700">{row.period}</span>
-                        <span
-                          className="absolute h-3 w-3 rounded-full bg-blue-700"
-                          style={{
-                            bottom: `${row.margin + 22}%`,
-                            left: `${10 + index * 13.4}%`,
-                          }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-950">同業比較（毛利率）</h2>
-              <div className="mt-5 space-y-5">
-                {peers.map((peer) => (
-                  <div key={peer.name} className="grid grid-cols-[110px_1fr_48px] items-center gap-3 text-sm">
-                    <span className="font-medium text-slate-800">{peer.name}</span>
-                    <span className="h-3 overflow-hidden rounded bg-slate-200">
-                      <span
-                        className={peer.highlight ? "block h-full rounded bg-teal-500" : "block h-full rounded bg-slate-300"}
-                        style={{ width: `${peer.value}%` }}
+              <div className="mt-5 h-[340px] min-w-0 overflow-x-auto">
+                {financialTrendRows.length ? (
+                  <div className="h-full min-w-[760px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart
+                      data={financialTrendRows}
+                      margin={{ top: 8, right: 12, bottom: 22, left: 8 }}
+                      barGap={4}
+                      barCategoryGap="16%"
+                    >
+                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+                      <XAxis
+                        dataKey="period"
+                        interval={0}
+                        axisLine={{ stroke: "#cbd5e1" }}
+                        tickLine={false}
+                        tick={{ fill: "#475569", fontSize: 12 }}
                       />
-                    </span>
-                    <span className={peer.highlight ? "font-semibold text-teal-700" : "text-slate-700"}>
-                      {peer.value}%
-                    </span>
+                      <YAxis
+                        yAxisId="amount"
+                        width={58}
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: "#475569", fontSize: 12 }}
+                        tickFormatter={(value: number) => value.toLocaleString("zh-TW")}
+                        label={{
+                          value: "億元",
+                          angle: -90,
+                          position: "insideLeft",
+                          fill: "#475569",
+                          fontSize: 12,
+                        }}
+                      />
+                      <YAxis
+                        yAxisId="margin"
+                        orientation="right"
+                        width={44}
+                        domain={[0, 70]}
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: "#475569", fontSize: 12 }}
+                        tickFormatter={(value: number) => formatPercent(value)}
+                        label={{
+                          value: "%",
+                          angle: 90,
+                          position: "insideRight",
+                          fill: "#475569",
+                          fontSize: 12,
+                        }}
+                      />
+                      <Tooltip
+                        cursor={{ fill: "#f1f5f9" }}
+                        formatter={(value, name) => {
+                          if (value === null || value === undefined) {
+                            return ["-", name];
+                          }
+                          const numericValue = Number(value);
+                          return [
+                            name === "毛利率"
+                              ? formatPercent(numericValue)
+                              : formatAmount(numericValue),
+                            name,
+                          ];
+                        }}
+                        contentStyle={{
+                          borderColor: "#cbd5e1",
+                          borderRadius: 8,
+                          color: "#0f172a",
+                          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.12)",
+                        }}
+                      />
+                      <Legend
+                        verticalAlign="top"
+                        align="center"
+                        iconType="circle"
+                        wrapperStyle={{ paddingBottom: 12, fontSize: 13 }}
+                      />
+                      <Bar
+                        yAxisId="amount"
+                        dataKey="revenue"
+                        name="營收"
+                        fill="#14b8a6"
+                        radius={[4, 4, 0, 0]}
+                      />
+                      <Bar
+                        yAxisId="amount"
+                        dataKey="netIncome"
+                        name="淨利"
+                        fill="#a855f7"
+                        radius={[4, 4, 0, 0]}
+                      />
+                      <Line
+                        yAxisId="margin"
+                        type="monotone"
+                        dataKey="grossMargin"
+                        name="毛利率"
+                        stroke="#1d4ed8"
+                        strokeWidth={3}
+                        dot={{ r: 4, fill: "#1d4ed8", strokeWidth: 0 }}
+                        activeDot={{ r: 6, fill: "#1d4ed8", stroke: "#ffffff", strokeWidth: 2 }}
+                      />
+                    </ComposedChart>
+                    </ResponsiveContainer>
                   </div>
-                ))}
+                ) : (
+                  <div className="flex h-full items-center justify-center rounded-md border border-dashed border-slate-300 px-4 text-center text-sm text-slate-500">
+                    產生報告後將顯示財務趨勢圖。
+                  </div>
+                )}
               </div>
-              <button
-                type="button"
-                className="mt-6 h-11 w-full rounded-md border border-slate-300 bg-white text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50"
-              >
-                查看更多同業比較
-              </button>
             </section>
           </div>
         </section>

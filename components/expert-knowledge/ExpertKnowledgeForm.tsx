@@ -56,10 +56,13 @@ import {
   DEFAULT_EXPERT_KNOWLEDGE_DATA_SOURCE,
   EXPERT_KNOWLEDGE_ALL_COMPANY_VALUE,
   EXPERT_KNOWLEDGE_DATA_SOURCE_OPTIONS,
-  readExpertKnowledgeEntries,
-  writeExpertKnowledgeEntries,
 } from "@/data/expertKnowledge";
-import { BACKEND_API_PATHS, buildBackendApiUrl } from "@/utils/api";
+import {
+  createExpertKnowledgeEntry,
+  fetchExpertKnowledgeEntry,
+  updateExpertKnowledgeEntry,
+} from "@/data/expertKnowledgeApi";
+import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
 
 const NO_COMPANY_VALUE = "__no_specific_company__";
 const REQUIRED_FIELD_ERROR_CLASS =
@@ -123,14 +126,6 @@ function debugCompanyOptions(options: { label: string; promptValue: string }[]) 
   }));
 }
 
-function createId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
 function RunningGenerateIndicator() {
   return (
     <span
@@ -150,9 +145,11 @@ function RunningGenerateIndicator() {
   );
 }
 
-export function ExpertKnowledgeForm(props: { entryId?: string }) {
+export function ExpertKnowledgeForm(props: { entryId?: string; readOnly?: boolean }) {
   const router = useRouter();
-  const [entries, setEntries] = useState<ExpertKnowledgeEntry[]>([]);
+  const [selectedEntry, setSelectedEntry] = useState<ExpertKnowledgeEntry | null>(
+    null,
+  );
   const [title, setTitle] = useState("");
   const [dataSource, setDataSource] = useState<string>(
     DEFAULT_EXPERT_KNOWLEDGE_DATA_SOURCE,
@@ -172,47 +169,59 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
   const [isSystemPromptGenerating, setIsSystemPromptGenerating] =
     useState(false);
   const [showValidationErrors, setShowValidationErrors] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const readOnly = props.readOnly ?? false;
 
   useEffect(() => {
-    const storedEntries = readExpertKnowledgeEntries();
-    setEntries(storedEntries);
-
     if (!props.entryId) {
       setIsReady(true);
       return;
     }
 
-    const selectedEntry = storedEntries.find(
-      (entry) => entry.id === props.entryId,
-    );
-    if (!selectedEntry) {
-      toast.error("找不到這筆專家指引");
-      router.replace("/expert-knowledge");
-      return;
+    let isMounted = true;
+
+    async function loadEntry() {
+      try {
+        const loadedEntry = await fetchExpertKnowledgeEntry(props.entryId!);
+        if (!isMounted) return;
+
+        const resolvedCompanyLabel = resolveStoredCompanySelection(
+          loadedEntry.companyLabel,
+          loadedEntry.companyPromptValue,
+        );
+
+        console.log("[ExpertKnowledgeForm][edit-load]", {
+          entryId: props.entryId,
+          selectedEntry: loadedEntry,
+          resolvedCompanyLabel,
+        });
+
+        setSelectedEntry(loadedEntry);
+        setIndustry(loadedEntry.industry);
+        setTitle(loadedEntry.title ?? "");
+        setCompanyLabel(resolvedCompanyLabel);
+        setDataSource(
+          loadedEntry.dataSource ?? DEFAULT_EXPERT_KNOWLEDGE_DATA_SOURCE,
+        );
+        setAnchorDescription(loadedEntry.anchorDescription ?? "");
+        setSystemPrompt(loadedEntry.systemPrompt);
+        setGeneratePrompt("");
+        setSystemPromptGeneratePrompt("");
+        setIsReady(true);
+      } catch (error) {
+        if (!isMounted) return;
+        toast.error(
+          error instanceof Error ? error.message : "找不到這筆專家指引",
+        );
+        router.replace("/expert-knowledge");
+      }
     }
 
-    const resolvedCompanyLabel = resolveStoredCompanySelection(
-      selectedEntry.companyLabel,
-      selectedEntry.companyPromptValue,
-    );
+    loadEntry();
 
-    console.log("[ExpertKnowledgeForm][edit-load]", {
-      entryId: props.entryId,
-      selectedEntry,
-      resolvedCompanyLabel,
-    });
-
-    setIndustry(selectedEntry.industry);
-    setTitle(selectedEntry.title ?? "");
-    setCompanyLabel(resolvedCompanyLabel);
-    setDataSource(
-      selectedEntry.dataSource ?? DEFAULT_EXPERT_KNOWLEDGE_DATA_SOURCE,
-    );
-    setAnchorDescription(selectedEntry.anchorDescription ?? "");
-    setSystemPrompt(selectedEntry.systemPrompt);
-    setGeneratePrompt("");
-    setSystemPromptGeneratePrompt("");
-    setIsReady(true);
+    return () => {
+      isMounted = false;
+    };
   }, [props.entryId, router]);
 
   const companyOptions = useMemo(
@@ -229,10 +238,6 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
     INDUSTRY_ICON_MAP[industry as keyof typeof INDUSTRY_ICON_MAP] ?? (
       <BusinessCenterIcon {...INDUSTRY_ICON_PROPS} />
     );
-  const selectedEntry = useMemo(
-    () => entries.find((entry) => entry.id === props.entryId) ?? null,
-    [entries, props.entryId],
-  );
   useEffect(() => {
     if (companyLabel === NO_COMPANY_VALUE) {
       console.log("[ExpertKnowledgeForm][company-sync] keep no-specific-company", {
@@ -276,17 +281,15 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
     }
   }, [companyLabel, companyOptions, industry]);
 
-  function persistEntries(nextEntries: ExpertKnowledgeEntry[]) {
-    setEntries(nextEntries);
-    writeExpertKnowledgeEntries(nextEntries);
-  }
-
   function handleIndustryChange(nextIndustry: string) {
+    if (readOnly) return;
     setIndustry(nextIndustry);
     setCompanyLabel("");
   }
 
-  function handleSave() {
+  async function handleSave() {
+    if (readOnly || isSaving) return;
+
     const normalizedCompanyLabel =
       companyLabel === NO_COMPANY_VALUE
         ? EXPERT_KNOWLEDGE_ALL_COMPANY_VALUE
@@ -339,8 +342,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
       return;
     }
 
-    const nextEntry: ExpertKnowledgeEntry = {
-      id: selectedEntry?.id ?? createId(),
+    const nextEntry = {
       title: trimmedTitle,
       dataSource,
       industry: company?.industry ?? industry,
@@ -353,20 +355,26 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
       ),
       anchorDescription: trimmedAnchorDescription,
       systemPrompt: trimmedPrompt,
-      updatedAt: new Date().toISOString(),
     };
 
-    const nextEntries = selectedEntry
-      ? entries.map((entry) =>
-          entry.id === selectedEntry.id ? nextEntry : entry,
-        )
-      : [nextEntry, ...entries];
-
-    persistEntries(nextEntries);
-    setShowValidationErrors(false);
-    toast.success(selectedEntry ? "已更新專家指引" : "已新增專家指引");
-    router.push("/expert-knowledge");
-    router.refresh();
+    try {
+      setIsSaving(true);
+      if (selectedEntry) {
+        await updateExpertKnowledgeEntry(selectedEntry.id, nextEntry);
+      } else {
+        await createExpertKnowledgeEntry(nextEntry);
+      }
+      setShowValidationErrors(false);
+      toast.success(selectedEntry ? "已更新專家指引" : "已新增專家指引");
+      router.push("/expert-knowledge");
+      router.refresh();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "儲存專家指引失敗",
+      );
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   function closeGenerateModal() {
@@ -390,8 +398,8 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
     try {
       setIsGenerating(true);
       // 將使用者輸入的 prompt 送到後端，產生錨定點內容。
-      const response = await fetch(
-        buildBackendApiUrl(BACKEND_API_PATHS.expertKnowledgeGenerateAnchor),
+      const response = await fetchBackendApi(
+        BACKEND_API_PATHS.expertKnowledgeGenerateAnchor,
         {
           method: "POST",
           headers: {
@@ -436,8 +444,8 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
     try {
       setIsSystemPromptGenerating(true);
       // 將使用者輸入的 prompt 送到後端，產生專家指引內容。
-      const response = await fetch(
-        buildBackendApiUrl(BACKEND_API_PATHS.expertKnowledgeGenerateAnalysis),
+      const response = await fetchBackendApi(
+        BACKEND_API_PATHS.expertKnowledgeGenerateAnalysis,
         {
           method: "POST",
           headers: {
@@ -485,7 +493,11 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
                 EXPERT KNOWLEDGE BASE
               </div>
               <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900">
-                {selectedEntry ? "編輯專家指引" : "新增專家指引"}
+                {readOnly
+                  ? "查看專家指引"
+                  : selectedEntry
+                    ? "編輯專家指引"
+                    : "新增專家指引"}
               </h1>
               <p className="mt-3 text-sm leading-7 text-slate-600">
                 依據現有公司清單與產業分類，設定該公司在聊天時要優先採用的分析角度與回答方式。
@@ -632,6 +644,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
             <Input
               value={title}
               onChange={(event) => setTitle(event.target.value)}
+              disabled={readOnly}
               placeholder="例如：水泥產業的原物料成本專家指引(台泥)"
               className={`h-11 rounded-xl ${showValidationErrors && !title.trim() ? REQUIRED_FIELD_ERROR_CLASS : ""}`}
             />
@@ -653,6 +666,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
                   className={`w-full appearance-none rounded-xl border border-input bg-background py-2 pl-3 pr-10 text-sm outline-none ${showValidationErrors && !industry ? REQUIRED_FIELD_ERROR_CLASS : ""}`}
                   value={industry}
                   onChange={(event) => handleIndustryChange(event.target.value)}
+                  disabled={readOnly}
                 >
                   <option value="">請選擇產業</option>
                   {INDUSTRY_OPTIONS.map((option) => (
@@ -674,6 +688,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
                   className={`w-full appearance-none rounded-xl border border-input bg-background py-2 pl-3 pr-10 text-sm outline-none ${showValidationErrors && companyLabel !== NO_COMPANY_VALUE && !companyLabel ? REQUIRED_FIELD_ERROR_CLASS : ""}`}
                   value={companyLabel}
                   onChange={(event) => setCompanyLabel(event.target.value)}
+                  disabled={readOnly}
                 >
                   <option value="">請選擇公司</option>
                   <option value={NO_COMPANY_VALUE}>不指定特定公司</option>
@@ -698,6 +713,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
                   className={`w-full appearance-none rounded-xl border border-input bg-background py-2 pl-3 pr-10 text-sm outline-none ${showValidationErrors && !dataSource ? REQUIRED_FIELD_ERROR_CLASS : ""}`}
                   value={dataSource}
                   onChange={(event) => setDataSource(event.target.value)}
+                  disabled={readOnly}
                 >
                   {EXPERT_KNOWLEDGE_DATA_SOURCE_OPTIONS.map((option) => (
                     <option key={option} value={option}>
@@ -721,6 +737,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
                 variant="outline"
                 size="sm"
                 onClick={() => setIsGenerateModalOpen(true)}
+                className={readOnly ? "hidden" : undefined}
               >
                 用AI產出範本
               </Button>
@@ -728,6 +745,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
             <Textarea
               value={anchorDescription}
               onChange={(event) => setAnchorDescription(event.target.value)}
+              disabled={readOnly}
               placeholder="例如：當使用者詢問半導體產業授信風險、晶圓代工景氣循環、庫存調整與資本支出壓力時優先使用。"
               className={`min-h-[120px] resize-y rounded-2xl ${showValidationErrors && !anchorDescription.trim() ? REQUIRED_FIELD_ERROR_CLASS : ""}`}
             />
@@ -750,6 +768,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
                 variant="outline"
                 size="sm"
                 onClick={() => setIsSystemPromptGenerateModalOpen(true)}
+                className={readOnly ? "hidden" : undefined}
               >
                 用AI產出範本
               </Button>
@@ -757,6 +776,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
             <Textarea
               value={systemPrompt}
               onChange={(event) => setSystemPrompt(event.target.value)}
+              disabled={readOnly}
               placeholder="例如：水泥產業現金流通常具景氣循環特性，若短期借款比重偏高，需確認是否存在季節性資金需求或債務結構失衡問題。若公司流動比率下降且短期借款持續增加，可能代表營運資金壓力上升，需進一步觀察未來現金流入狀況。。"
               className={`min-h-[320px] resize-y rounded-2xl ${showValidationErrors && !systemPrompt.trim() ? REQUIRED_FIELD_ERROR_CLASS : ""}`}
             />
@@ -772,9 +792,21 @@ export function ExpertKnowledgeForm(props: { entryId?: string }) {
             <Button type="button" variant="outline" asChild>
               <Link href="/expert-knowledge">取消</Link>
             </Button>
-            <Button type="button" onClick={handleSave}>
-              {selectedEntry ? "儲存變更" : "建立專家指引"}
-            </Button>
+            {readOnly ? (
+              <Button type="button" asChild>
+                <Link href={`/expert-knowledge/${selectedEntry?.id}/edit`}>
+                  編輯
+                </Link>
+              </Button>
+            ) : (
+              <Button type="button" onClick={handleSave} disabled={isSaving}>
+                {isSaving
+                  ? "儲存中..."
+                  : selectedEntry
+                    ? "儲存變更"
+                    : "建立專家指引"}
+              </Button>
+            )}
           </div>
         </section>
       </div>

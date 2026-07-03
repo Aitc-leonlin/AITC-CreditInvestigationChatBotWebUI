@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowRight, Bot, FileText } from "lucide-react";
 
 const entryCards = [
@@ -20,41 +21,58 @@ const entryCards = [
 
 export default function Home() {
   return (
-    <main className="h-full overflow-y-auto bg-[#f8fcff]">
-      <div className="mx-auto flex min-h-full max-w-6xl flex-col justify-center px-5 py-10 md:px-8">
-        <section className="max-w-3xl">
-          <div className="text-sm font-semibold text-[#2d689d]">AITC Credit Investigation</div>
-          <h1 className="mt-3 text-3xl font-semibold leading-tight text-[#12344a] md:text-5xl">
+    <main className="h-full overflow-hidden bg-[#f8fcff]">
+      <div className="mx-auto flex h-full max-w-7xl flex-col justify-center gap-2 px-4 py-4 md:gap-3 md:px-6">
+        <section className="shrink-0">
+          <div className="text-xs font-semibold text-[#2d689d] md:text-sm">
+            AITC Credit Investigation
+          </div>
+          <h1 className="mt-2 text-2xl font-semibold leading-tight text-[#12344a] md:text-4xl lg:text-5xl">
             徵審授信AI平台
           </h1>
-          <p className="mt-4 text-base leading-7 text-[#4c7187] md:text-lg">
+          <p className="mt-3 text-sm leading-6 text-[#4c7187] md:text-base">
             點選進入授信AI助理進行授信風險問答，或使用徵審報告產生器建立分析報告草稿。
           </p>
         </section>
 
-        <section className="mt-8 grid gap-4 md:grid-cols-2">
-          {entryCards.map((entry) => {
-            const Icon = entry.icon;
+        <section className="grid min-h-0 content-start grid-rows-[auto_minmax(0,1fr)] gap-4 md:grid-cols-[4fr_6fr] md:grid-rows-1 md:items-start md:gap-6 lg:gap-8">
+          <div className="grid gap-3 md:gap-4">
+            {entryCards.map((entry) => {
+              const Icon = entry.icon;
 
-            return (
-              <Link
-                key={entry.href}
-                href={entry.href}
-                className="group rounded-lg border border-[#d6e8f4] bg-white p-6 shadow-[0_14px_40px_rgba(48,169,216,0.08)] transition-colors hover:border-[#57A6D4] hover:bg-[#f4fafe]"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg ${entry.accentClassName}`}>
-                    <Icon className="h-6 w-6" />
-                  </span>
-                  <ArrowRight className="mt-1 h-5 w-5 shrink-0 text-[#57A6D4] transition-transform group-hover:translate-x-1" />
-                </div>
-                <h2 className="mt-5 text-xl font-semibold text-[#12344a]">{entry.title}</h2>
-                <p className="mt-3 min-h-[72px] text-sm leading-6 text-[#4c7187] md:text-base">
-                  {entry.description}
-                </p>
-              </Link>
-            );
-          })}
+              return (
+                <Link
+                  key={entry.href}
+                  href={entry.href}
+                  className="group rounded-lg border border-[#d6e8f4] bg-white p-4 shadow-[0_14px_40px_rgba(48,169,216,0.08)] transition-colors hover:border-[#57A6D4] hover:bg-[#f4fafe] md:p-5"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg md:h-11 md:w-11 ${entry.accentClassName}`}>
+                      <Icon className="h-5 w-5 md:h-6 md:w-6" />
+                    </span>
+                    <ArrowRight className="mt-1 h-5 w-5 shrink-0 text-[#57A6D4] transition-transform group-hover:translate-x-1" />
+                  </div>
+                  <h2 className="mt-3 text-lg font-semibold text-[#12344a] md:text-xl">
+                    {entry.title}
+                  </h2>
+                  <p className="mt-2 text-sm leading-6 text-[#4c7187]">
+                    {entry.description}
+                  </p>
+                </Link>
+              );
+            })}
+          </div>
+
+          <div className="min-h-0">
+            <Image
+              src="/images/HomePageBanner.png"
+              alt="徵審授信AI平台"
+              width={1774}
+              height={887}
+              priority
+              className="h-full max-h-[42vh] w-full rounded-lg border border-[#d6e8f4] object-contain shadow-[0_14px_40px_rgba(48,169,216,0.10)] md:max-h-[68vh]"
+            />
+          </div>
         </section>
       </div>
     </main>

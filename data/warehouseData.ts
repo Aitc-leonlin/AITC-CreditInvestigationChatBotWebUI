@@ -24,6 +24,8 @@ export type WarehouseDataEntry = {
   summary: string;
   source: string;
   url: string;
+  recordUpdatedAt: string;
+  createdAt: string;
   updatedAt: string;
 };
 
@@ -109,6 +111,8 @@ function normalizeWarehouseDataEntry(
     summary: entry.summary ?? "",
     source: entry.source ?? "",
     url: entry.url ?? "",
+    recordUpdatedAt: entry.recordUpdatedAt ?? "",
+    createdAt: entry.createdAt ?? entry.updatedAt ?? new Date().toISOString(),
     updatedAt: entry.updatedAt ?? new Date().toISOString(),
   };
 }

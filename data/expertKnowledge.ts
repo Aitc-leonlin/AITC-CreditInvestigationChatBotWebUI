@@ -16,6 +16,7 @@ export type ExpertKnowledgeEntry = {
   sourceSchemaKey: string;
   anchorDescription: string;
   systemPrompt: string;
+  createdAt: string;
   updatedAt: string;
 };
 
@@ -31,7 +32,7 @@ export function buildExpertKnowledgeSourceSchemaKey(
   return `expert_knowledge.${buildSchemaSegment(dataSource)}.${buildSchemaSegment(industry)}.${buildSchemaSegment(companyLabel)}`;
 }
 
-function normalizeExpertKnowledgeEntry(entry: ExpertKnowledgeEntry) {
+export function normalizeExpertKnowledgeEntry(entry: ExpertKnowledgeEntry) {
   const normalizedDataSource =
     entry.dataSource ?? DEFAULT_EXPERT_KNOWLEDGE_DATA_SOURCE;
   const matchedCompany =
@@ -66,6 +67,7 @@ function normalizeExpertKnowledgeEntry(entry: ExpertKnowledgeEntry) {
       ),
     anchorDescription:
       entry.anchorDescription ?? (entry as { description?: string }).description ?? "",
+    createdAt: entry.createdAt ?? entry.updatedAt ?? new Date().toISOString(),
   };
 }
 

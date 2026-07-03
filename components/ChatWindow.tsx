@@ -51,13 +51,9 @@ import {
   getCompanyByLabel,
   getCompanyPromptValue,
 } from "@/data/companyKnowledge";
-import {
-  resolveAppliedExpertKnowledgeEntries,
-} from "@/data/expertKnowledge";
-import {
-  resolveAppliedWarehouseDataEntries,
-} from "@/data/warehouseData";
-import { BACKEND_API_PATHS, buildBackendApiUrl } from "@/utils/api";
+import { fetchAppliedExpertKnowledgeEntries } from "@/data/expertKnowledgeApi";
+import { fetchAppliedWarehouseDataEntries } from "@/data/warehouseDataApi";
+import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
 
 const STORAGE_KEY = "aitc-chatbot-sessions-v1";
 const HISTORY_PANEL_STORAGE_KEY = "aitc-chatbot-history-panel-open-v1";
@@ -80,6 +76,9 @@ type ChatSession = {
   createdAt: string;
   updatedAt: string;
   messages: Message[];
+  dataSourcesForMessages?: Record<string, any[]>;
+  expertKnowledgeForMessages?: Record<string, UsedExpertKnowledge[]>;
+  externalDataForMessages?: Record<string, ExternalReferenceData[]>;
 };
 
 type PendingSubmission = {
@@ -276,6 +275,22 @@ function buildSessionTitle(messages: Message[]) {
   return preferredTitle.slice(0, 24);
 }
 
+function createEmptyReferenceMaps() {
+  return {
+    dataSourcesForMessages: {} as Record<string, any[]>,
+    expertKnowledgeForMessages: {} as Record<string, UsedExpertKnowledge[]>,
+    externalDataForMessages: {} as Record<string, ExternalReferenceData[]>,
+  };
+}
+
+function getSessionReferenceMaps(session: ChatSession | null | undefined) {
+  return {
+    dataSourcesForMessages: session?.dataSourcesForMessages ?? {},
+    expertKnowledgeForMessages: session?.expertKnowledgeForMessages ?? {},
+    externalDataForMessages: session?.externalDataForMessages ?? {},
+  };
+}
+
 function createEmptySession(): ChatSession {
   const now = new Date().toISOString();
   return {
@@ -284,6 +299,7 @@ function createEmptySession(): ChatSession {
     createdAt: now,
     updatedAt: now,
     messages: [],
+    ...createEmptyReferenceMaps(),
   };
 }
 
@@ -296,9 +312,12 @@ function upsertSession(
   sessions: ChatSession[],
   sessionId: string,
   messages: Message[],
+  referenceMaps?: ReturnType<typeof createEmptyReferenceMaps>,
 ) {
   const now = new Date().toISOString();
   const existingSession = sessions.find((session) => session.id === sessionId);
+  const nextReferenceMaps =
+    referenceMaps ?? getSessionReferenceMaps(existingSession);
 
   if (!existingSession) {
     return [
@@ -308,6 +327,7 @@ function upsertSession(
         createdAt: now,
         updatedAt: now,
         messages,
+        ...nextReferenceMaps,
       },
       ...sessions,
     ];
@@ -321,6 +341,7 @@ function upsertSession(
             title: buildSessionTitle(messages),
             updatedAt: now,
             messages,
+            ...nextReferenceMaps,
           }
         : session,
     )
@@ -909,6 +930,12 @@ export function ChatWindow(props: {
       setSessions(sortedSessions);
       setDraftSession(null);
       setActiveSessionId(sortedSessions[0].id);
+      const restoredReferenceMaps = getSessionReferenceMaps(sortedSessions[0]);
+      setDataSourcesForMessages(restoredReferenceMaps.dataSourcesForMessages);
+      setExpertKnowledgeForMessages(
+        restoredReferenceMaps.expertKnowledgeForMessages,
+      );
+      setExternalDataForMessages(restoredReferenceMaps.externalDataForMessages);
     } catch {
       const initialDraftSession = createEmptySession();
       setSessions([]);
@@ -1016,7 +1043,10 @@ export function ChatWindow(props: {
       : openSidePanelsCount === 1
         ? "max-w-[960px]"
         : "max-w-[1100px]";
-  function replaceActiveSession(messages: Message[]) {
+  function replaceActiveSession(
+    messages: Message[],
+    referenceMaps?: ReturnType<typeof createEmptyReferenceMaps>,
+  ) {
     if (!activeSessionId) return;
 
     const isSavedSession = sessions.some((session) => session.id === activeSessionId);
@@ -1024,14 +1054,23 @@ export function ChatWindow(props: {
     if (!isSavedSession && messages.length === 0) {
       setDraftSession((currentDraftSession) =>
         currentDraftSession && currentDraftSession.id === activeSessionId
-          ? { ...currentDraftSession, messages }
+          ? {
+              ...currentDraftSession,
+              messages,
+              ...(referenceMaps ?? getSessionReferenceMaps(currentDraftSession)),
+            }
           : currentDraftSession,
       );
       return;
     }
 
     setSessions((currentSessions) => {
-      const nextSessions = upsertSession(currentSessions, activeSessionId, messages);
+      const nextSessions = upsertSession(
+        currentSessions,
+        activeSessionId,
+        messages,
+        referenceMaps,
+      );
       persistSessions(nextSessions);
       return nextSessions;
     });
@@ -1060,11 +1099,15 @@ export function ChatWindow(props: {
   }
 
   function selectSession(sessionId: string) {
+    const targetSession =
+      sessions.find((session) => session.id === sessionId) ??
+      (draftSession?.id === sessionId ? draftSession : null);
+    const restoredReferenceMaps = getSessionReferenceMaps(targetSession);
     setActiveSessionId(sessionId);
     setInput("");
-    setDataSourcesForMessages({});
-    setExpertKnowledgeForMessages({});
-    setExternalDataForMessages({});
+    setDataSourcesForMessages(restoredReferenceMaps.dataSourcesForMessages);
+    setExpertKnowledgeForMessages(restoredReferenceMaps.expertKnowledgeForMessages);
+    setExternalDataForMessages(restoredReferenceMaps.externalDataForMessages);
   }
 
   function stopGenerating() {
@@ -1178,21 +1221,50 @@ export function ChatWindow(props: {
         content: "",
       });
 
-    replaceActiveSession(displayMessages);
+    const emptyReferenceMaps = createEmptyReferenceMaps();
+    replaceActiveSession(displayMessages, emptyReferenceMaps);
     setIsLoading(true);
     setIntermediateStepsLoading(true);
-    setDataSourcesForMessages({});
-    setExpertKnowledgeForMessages({});
-    setExternalDataForMessages({});
+    setDataSourcesForMessages(emptyReferenceMaps.dataSourcesForMessages);
+    setExpertKnowledgeForMessages(emptyReferenceMaps.expertKnowledgeForMessages);
+    setExternalDataForMessages(emptyReferenceMaps.externalDataForMessages);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    const appliedExpertKnowledgeEntries = settings.useExpertKnowledge
-      ? resolveAppliedExpertKnowledgeEntries()
-      : [];
-    const appliedWarehouseDataEntries = settings.useWarehouseData
-      ? resolveAppliedWarehouseDataEntries()
-      : [];
+    const selectedCompanyForExpertKnowledge = getCompanyByLabel(settings.company);
+    let appliedExpertKnowledgeEntries: Awaited<
+      ReturnType<typeof fetchAppliedExpertKnowledgeEntries>
+    > = [];
+
+    if (settings.useExpertKnowledge) {
+      try {
+        appliedExpertKnowledgeEntries = await fetchAppliedExpertKnowledgeEntries({
+          companyLabel: settings.company,
+          companyPromptValue: selectedCompanyForExpertKnowledge?.promptValue ?? "",
+          industry: selectedCompanyForExpertKnowledge?.industry ?? "",
+          dataSource: "財務報表",
+        });
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "讀取專家知識庫失敗",
+        );
+      }
+    }
+    let appliedWarehouseDataEntries: Awaited<
+      ReturnType<typeof fetchAppliedWarehouseDataEntries>
+    > = [];
+
+    if (settings.useWarehouseData) {
+      try {
+        appliedWarehouseDataEntries = await fetchAppliedWarehouseDataEntries({
+          companyLabel: settings.company,
+          companyPromptValue: selectedCompanyForExpertKnowledge?.promptValue ?? "",
+          industry: selectedCompanyForExpertKnowledge?.industry ?? "",
+        });
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "讀取資料倉儲失敗");
+      }
+    }
     const appliedExpertKnowledgePayload = appliedExpertKnowledgeEntries
       .map((entry) => ({
         anchorDescription: entry.anchorDescription?.trim?.() ?? "",
@@ -1201,6 +1273,8 @@ export function ChatWindow(props: {
         industry: entry.industry?.trim?.() ?? "",
         systemPrompt: entry.systemPrompt?.trim?.() ?? "",
         title: entry.title?.trim?.() ?? "",
+        createdAt: entry.createdAt?.trim?.() ?? "",
+        updatedAt: entry.updatedAt?.trim?.() ?? "",
       }))
       .filter(
         (entry) =>
@@ -1209,7 +1283,9 @@ export function ChatWindow(props: {
           entry.dataSource ||
           entry.industry ||
           entry.systemPrompt ||
-          entry.title,
+          entry.title ||
+          entry.createdAt ||
+          entry.updatedAt,
       );
     const appliedWarehouseDataPayload = appliedWarehouseDataEntries
       .map((entry) => ({
@@ -1220,6 +1296,8 @@ export function ChatWindow(props: {
         source: entry.source?.trim?.() ?? "",
         summary: entry.summary?.trim?.() ?? "",
         title: entry.title?.trim?.() ?? "",
+        recordUpdatedAt: entry.recordUpdatedAt?.trim?.() ?? "",
+        createdAt: entry.createdAt?.trim?.() ?? "",
         updatedAt: entry.updatedAt ?? "",
         url: entry.url?.trim?.() ?? "",
       }))
@@ -1232,6 +1310,8 @@ export function ChatWindow(props: {
           entry.source ||
           entry.summary ||
           entry.title ||
+          entry.recordUpdatedAt ||
+          entry.createdAt ||
           entry.url,
       );
 
@@ -1290,8 +1370,8 @@ export function ChatWindow(props: {
       };
 
       // 將完整聊天內容送到後端聊天服務，並把串流回應即時顯示在前端。
-      const response = await fetch(
-        buildBackendApiUrl(targetEndpoint),
+      const response = await fetchBackendApi(
+        targetEndpoint,
         {
           method: "POST",
           headers: {
@@ -1311,9 +1391,17 @@ export function ChatWindow(props: {
       const dataSourcesHeader =
         response.headers.get("x-data-sources") ??
         response.headers.get("x-sources");
+      let responseReferenceMaps = createEmptyReferenceMaps();
       if (dataSourcesHeader) {
+        const parsedDataSources = parseBase64JsonHeader<any[]>(dataSourcesHeader);
+        responseReferenceMaps = {
+          ...responseReferenceMaps,
+          dataSourcesForMessages: {
+            [assistantMessageId]: parsedDataSources,
+          },
+        };
         setDataSourcesForMessages({
-          [assistantMessageId]: parseBase64JsonHeader<any[]>(dataSourcesHeader),
+          [assistantMessageId]: parsedDataSources,
         });
       }
 
@@ -1367,27 +1455,45 @@ export function ChatWindow(props: {
                       : "",
                 systemPrompt:
                   typeof entry?.systemPrompt === "string" ? entry.systemPrompt : "",
+                createdAt:
+                  typeof entry?.createdAt === "string" ? entry.createdAt : "",
+                updatedAt:
+                  typeof entry?.updatedAt === "string" ? entry.updatedAt : "",
               }))
               .filter(
                 (entry: UsedExpertKnowledge) =>
-                  entry.title || entry.anchorDescription || entry.systemPrompt,
+                  entry.title ||
+                  entry.anchorDescription ||
+                  entry.systemPrompt ||
+                  entry.createdAt ||
+                  entry.updatedAt,
               )
           : [];
 
-        if (!dataSourcesHeader && dataSources.length > 0) {
-          setDataSourcesForMessages({
-            [assistantMessageId]: dataSources,
-          });
-        }
-        setExpertKnowledgeForMessages({
+        const nextDataSourcesForMessages =
+          !dataSourcesHeader && dataSources.length > 0
+            ? { [assistantMessageId]: dataSources }
+            : responseReferenceMaps.dataSourcesForMessages;
+        const nextExpertKnowledgeForMessages = {
           [assistantMessageId]: usedExpertKnowledge,
-        });
-        setExternalDataForMessages({
+        };
+        const nextExternalDataForMessages = {
           [assistantMessageId]:
             responseExternalData.length > 0
               ? responseExternalData
               : fallbackExternalData,
-        });
+        };
+        responseReferenceMaps = {
+          dataSourcesForMessages: nextDataSourcesForMessages,
+          expertKnowledgeForMessages: nextExpertKnowledgeForMessages,
+          externalDataForMessages: nextExternalDataForMessages,
+        };
+
+        if (!dataSourcesHeader && dataSources.length > 0) {
+          setDataSourcesForMessages(nextDataSourcesForMessages);
+        }
+        setExpertKnowledgeForMessages(nextExpertKnowledgeForMessages);
+        setExternalDataForMessages(nextExternalDataForMessages);
 
         if (
           settings.useExternalData &&
@@ -1410,7 +1516,7 @@ export function ChatWindow(props: {
           role: "assistant",
           content: assistantContent,
         });
-        replaceActiveSession(finalMessages);
+        replaceActiveSession(finalMessages, responseReferenceMaps);
         return;
       }
 
@@ -1430,7 +1536,7 @@ export function ChatWindow(props: {
           role: "assistant",
           content: assistantContent,
         });
-        replaceActiveSession(nextMessages);
+        replaceActiveSession(nextMessages, responseReferenceMaps);
       }
 
       const finalMessages = requestMessages.concat({
@@ -1438,7 +1544,7 @@ export function ChatWindow(props: {
         role: "assistant",
         content: assistantContent,
       });
-      replaceActiveSession(finalMessages);
+      replaceActiveSession(finalMessages, responseReferenceMaps);
     } catch (error: any) {
       if (error?.name === "AbortError") {
         toast.message("已停止生成");

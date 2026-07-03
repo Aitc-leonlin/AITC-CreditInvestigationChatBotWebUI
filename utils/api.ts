@@ -10,9 +10,9 @@ export function buildApiUrl(path: string, baseUrl?: string) {
   return `${baseUrl.replace(/\/$/, "")}${normalizedPath}`;
 }
 
-// Centralized frontend-to-backend API config. Update these constants directly
-// when the backend server host or routes change.
-export const BACKEND_API_BASE_URL = "http://localhost:3001";
+// Centralized frontend-to-backend API config.
+export const BACKEND_API_BASE_URL =
+  process.env.NEXT_PUBLIC_BACKEND_API_BASE_URL ?? "http://localhost:3001";
 
 export const BACKEND_API_PATHS = {
   chat: "/api/chatbot",
@@ -24,11 +24,21 @@ export const BACKEND_API_PATHS = {
   reportGeneratorGenerate: "/api/report-generator/generate",
   reportGeneratorHistory: "/api/report-generator/history",
   retrievalIngest: "/api/retrieval/ingest",
+  expertKnowledge: "/api/expert-knowledge",
+  expertKnowledgeApplied: "/api/expert-knowledge/applied",
   expertKnowledgeGenerateAnchor: "/api/expert-knowledge/generate-anchor",
   expertKnowledgeGenerateAnalysis:
     "/api/expert-knowledge/generate-analysis",
+  warehouseData: "/api/warehouse-data",
+  warehouseDataApplied: "/api/warehouse-data/applied",
 } as const;
 
 export function buildBackendApiUrl(path: string) {
   return buildApiUrl(path, BACKEND_API_BASE_URL);
+}
+
+export async function fetchBackendApi(path: string, init?: RequestInit) {
+  const url = buildBackendApiUrl(path);
+
+  return fetch(url, init);
 }

@@ -7,5 +7,5 @@ import { ExpertKnowledgeForm } from "@/components/expert-knowledge/ExpertKnowled
 export default function ExpertKnowledgeDetailPage() {
   const params = useParams<{ entryId: string }>();
 
-  return <ExpertKnowledgeForm entryId={params.entryId} />;
+  return <ExpertKnowledgeForm entryId={params.entryId} readOnly />;
 }

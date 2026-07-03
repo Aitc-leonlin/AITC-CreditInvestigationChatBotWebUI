@@ -8,6 +8,8 @@ export type UsedExpertKnowledge = {
   title?: string;
   anchorDescription?: string;
   systemPrompt?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type ExternalReferenceData = {

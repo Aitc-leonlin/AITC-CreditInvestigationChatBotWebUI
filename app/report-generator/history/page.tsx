@@ -1,0 +1,827 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import HistoryEduIcon from "@mui/icons-material/HistoryEdu";
+import { Box, Chip } from "@mui/material";
+import {
+  DataGrid,
+  type GridColDef,
+  type GridPaginationModel,
+  type GridRenderCellParams,
+} from "@mui/x-data-grid";
+import {
+  AlertCircle,
+  BarChart3,
+  CalendarClock,
+  DollarSign,
+  Download,
+  Eye,
+  Search,
+  ShieldCheck,
+  Scale,
+  TrendingUp,
+} from "lucide-react";
+import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Legend,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
+
+type ReportStatus = "已完成" | "產生中" | "失敗";
+
+type HistoricalReport = {
+  id: string;
+  publicId: string;
+  title: string;
+  company: string;
+  year: string;
+  period: string;
+  reportType: string;
+  generatedAt: string;
+  generatedBy: string;
+  status: ReportStatus;
+  fileSize: string;
+  fileName?: string;
+};
+
+type ReportHistoryResponse = {
+  reports?: HistoricalReport[];
+  total?: number;
+  page?: number;
+  pageSize?: number;
+  offset?: number;
+  detail?: string;
+  error?: string;
+};
+
+type DashboardMetric = {
+  label: string;
+  value: string;
+  trend: string;
+  iconKey?: "barChart" | "trendingUp" | "scale" | "shieldCheck" | "dollarSign";
+  calculationStatus?: "complete" | "incomplete";
+  calculationReason?: string;
+};
+
+type FinancialTrend = {
+  period: string;
+  revenue: number | null;
+  netIncome: number | null;
+  grossMargin: number | null;
+};
+
+type ReportDashboard = {
+  id: string;
+  historyId: string;
+  summaryItems: string[];
+  progressItems: { label: string; status: string }[];
+  progressPercent: number;
+  metricsTitle: string;
+  metrics: DashboardMetric[];
+  financialTrends: FinancialTrend[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+type ReportDashboardResponse = {
+  dashboard?: ReportDashboard;
+  detail?: string;
+  error?: string;
+};
+
+const REPORT_STATUS_STYLE: Record<
+  ReportStatus,
+  { color: string; backgroundColor: string }
+> = {
+  已完成: { color: "#0f766e", backgroundColor: "#ccfbf1" },
+  產生中: { color: "#92400e", backgroundColor: "#fef3c7" },
+  失敗: { color: "#991b1b", backgroundColor: "#fee2e2" },
+};
+
+const metricIconMap = {
+  barChart: BarChart3,
+  trendingUp: TrendingUp,
+  scale: Scale,
+  shieldCheck: ShieldCheck,
+  dollarSign: DollarSign,
+} as const;
+
+function getFilenameFromContentDisposition(contentDisposition: string | null) {
+  if (!contentDisposition) return "";
+
+  const encodedFilename = contentDisposition.match(/filename\*=UTF-8''([^;]+)/)?.[1];
+  if (encodedFilename) {
+    return decodeURIComponent(encodedFilename);
+  }
+
+  return contentDisposition.match(/filename="([^"]+)"/)?.[1] ?? "";
+}
+
+function getReportDisplayName(report: HistoricalReport) {
+  return (report.fileName || report.title).replace(/\.docx$/i, "");
+}
+
+function formatAmount(value: number) {
+  return `${value.toLocaleString("zh-TW")} 億元`;
+}
+
+function formatPercent(value: number) {
+  return `${value.toLocaleString("zh-TW")}%`;
+}
+
+function DashboardMetricCard(props: { item: DashboardMetric }) {
+  const Icon = props.item.iconKey ? metricIconMap[props.item.iconKey] : BarChart3;
+  const hasCalculationError =
+    props.item.calculationStatus === "incomplete" || Boolean(props.item.calculationReason);
+
+  return (
+    <div
+      className={`relative h-full rounded-lg border px-5 py-4 shadow-sm ${
+        hasCalculationError
+          ? "min-h-[160px] border-rose-200 bg-rose-50/80"
+          : "border-slate-200 bg-white"
+      }`}
+    >
+      <div className={`flex h-full flex-col ${hasCalculationError ? "min-h-[128px]" : ""}`}>
+        <div className="flex min-h-10 items-center gap-3">
+          <span
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+              hasCalculationError ? "bg-rose-100 text-rose-700" : "bg-teal-50 text-teal-600"
+            }`}
+          >
+            <Icon className="h-5 w-5" />
+          </span>
+          <div
+            className={`min-w-0 text-sm font-medium leading-5 ${
+              hasCalculationError ? "text-rose-800" : "text-slate-700"
+            }`}
+          >
+            {props.item.label}
+          </div>
+        </div>
+
+        <div className="flex flex-1 flex-col pt-4">
+          <div className="flex flex-1 flex-col justify-center">
+            <div
+              className={`text-2xl font-semibold leading-tight ${
+                hasCalculationError ? "text-rose-950" : "text-slate-950"
+              }`}
+            >
+              {props.item.value}
+            </div>
+            {props.item.calculationReason ? (
+              <div className="mt-2 text-xs font-semibold text-rose-700">計算異常</div>
+            ) : null}
+          </div>
+          <div
+            className={`pt-2 text-xs font-semibold ${
+              hasCalculationError ? "text-rose-700" : "text-emerald-700"
+            }`}
+          >
+            {props.item.trend}
+          </div>
+        </div>
+
+        {props.item.calculationReason ? (
+          <div className="mt-3 flex min-h-7 items-center">
+            <div className="group relative">
+              <button
+                type="button"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-rose-600 text-white shadow-sm transition-colors hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                aria-label={`查看${props.item.label}錯誤訊息`}
+                title="查看錯誤訊息"
+              >
+                <AlertCircle className="h-5 w-5" />
+              </button>
+              <div
+                role="tooltip"
+                className="pointer-events-none absolute bottom-9 left-0 z-30 w-[min(280px,calc(100vw-3rem))] translate-y-1 rounded-2xl border-2 border-rose-300 bg-white px-4 py-3 text-sm leading-6 text-rose-950 opacity-0 shadow-[0_14px_35px_rgba(15,23,42,0.18)] transition duration-150 before:absolute before:-bottom-2 before:left-5 before:h-4 before:w-4 before:rotate-45 before:border-b-2 before:border-r-2 before:border-rose-300 before:bg-white group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
+              >
+                <div className="mb-1 text-xs font-semibold text-rose-700">指標計算異常</div>
+                <div className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words pr-1">
+                  {props.item.calculationReason}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+async function fetchReportDashboard(report: HistoricalReport) {
+  const response = await fetchBackendApi(
+    `${BACKEND_API_PATHS.reportGeneratorHistory}/${report.id}/dashboard`,
+    { cache: "no-store" },
+  );
+  const json = await response.json().catch(() => null) as ReportDashboardResponse | null;
+
+  if (!response.ok) {
+    throw new Error(json?.detail ?? json?.error ?? "Dashboard 載入失敗");
+  }
+
+  if (!json?.dashboard) {
+    throw new Error("Dashboard 資料格式不正確");
+  }
+
+  return {
+    ...json.dashboard,
+    financialTrends: json.dashboard.financialTrends ?? [],
+  };
+}
+
+async function downloadHistoricalReport(report: HistoricalReport) {
+  const response = await fetchBackendApi(
+    `${BACKEND_API_PATHS.reportGeneratorHistory}/${report.publicId}/download`,
+  );
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") ?? "";
+    const errorPayload = contentType.includes("application/json")
+      ? await response.json().catch(() => null)
+      : null;
+    const errorText = errorPayload ? "" : await response.text().catch(() => "");
+    throw new Error(
+      errorPayload?.detail ??
+        errorPayload?.error ??
+        (errorText || "歷史報告下載失敗"),
+    );
+  }
+
+  const reportBlob = await response.blob();
+  const downloadUrl = URL.createObjectURL(reportBlob);
+  const responseFilename = getFilenameFromContentDisposition(
+    response.headers.get("content-disposition"),
+  );
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = responseFilename || report.fileName || `${report.id}.docx`;
+  link.click();
+  URL.revokeObjectURL(downloadUrl);
+}
+
+export default function ReportHistoryPage() {
+  const [selectedStatus, setSelectedStatus] = useState("");
+  const [searchKeyword, setSearchKeyword] = useState("");
+  const [debouncedSearchKeyword, setDebouncedSearchKeyword] = useState("");
+  const [reportHistory, setReportHistory] = useState<HistoricalReport[]>([]);
+  const [isLoadingReports, setIsLoadingReports] = useState(true);
+  const [historyError, setHistoryError] = useState("");
+  const [downloadError, setDownloadError] = useState("");
+  const [dashboardError, setDashboardError] = useState("");
+  const [selectedDashboardReport, setSelectedDashboardReport] =
+    useState<HistoricalReport | null>(null);
+  const [selectedDashboard, setSelectedDashboard] =
+    useState<ReportDashboard | null>(null);
+  const [isDashboardLoading, setIsDashboardLoading] = useState(false);
+  const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
+    page: 0,
+    pageSize: 10,
+  });
+  const [rowCount, setRowCount] = useState(0);
+  const [isServerPaginated, setIsServerPaginated] = useState(true);
+
+  async function openDashboard(report: HistoricalReport) {
+    setSelectedDashboardReport(report);
+    setSelectedDashboard(null);
+    setDashboardError("");
+    setIsDashboardLoading(true);
+
+    try {
+      setSelectedDashboard(await fetchReportDashboard(report));
+    } catch (error) {
+      setDashboardError(error instanceof Error ? error.message : "Dashboard 載入失敗");
+    } finally {
+      setIsDashboardLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearchKeyword(searchKeyword);
+      setPaginationModel((current) => ({ ...current, page: 0 }));
+    }, 350);
+
+    return () => window.clearTimeout(timeout);
+  }, [searchKeyword]);
+
+  useEffect(() => {
+    setPaginationModel((current) => ({ ...current, page: 0 }));
+  }, [selectedStatus]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    const page = paginationModel.page + 1;
+    const offset = paginationModel.page * paginationModel.pageSize;
+    const searchParams = new URLSearchParams({
+      page: String(page),
+      pageSize: String(paginationModel.pageSize),
+      offset: String(offset),
+    });
+
+    if (debouncedSearchKeyword.trim()) {
+      searchParams.set("keyword", debouncedSearchKeyword.trim());
+    }
+    if (selectedStatus.trim()) {
+      searchParams.set("status", selectedStatus.trim());
+    }
+
+    async function loadReportHistory() {
+      try {
+        setIsLoadingReports(true);
+        setHistoryError("");
+        const response = await fetchBackendApi(
+          `${BACKEND_API_PATHS.reportGeneratorHistory}?${searchParams.toString()}`,
+          { cache: "no-store" },
+        );
+        const json = await response.json().catch(() => null) as ReportHistoryResponse | null;
+
+        if (!response.ok) {
+          throw new Error(json?.detail ?? json?.error ?? "歷史報告載入失敗");
+        }
+
+        if (!ignore) {
+          const reports = json?.reports;
+          const total = json?.total;
+          setReportHistory(Array.isArray(reports) ? reports : []);
+          setIsServerPaginated(typeof total === "number");
+          setRowCount(typeof total === "number" ? total : reports?.length ?? 0);
+        }
+      } catch (error) {
+        if (!ignore) {
+          setHistoryError(
+            error instanceof Error ? error.message : "歷史報告載入失敗",
+          );
+        }
+      } finally {
+        if (!ignore) {
+          setIsLoadingReports(false);
+        }
+      }
+    }
+
+    loadReportHistory();
+
+    return () => {
+      ignore = true;
+    };
+  }, [
+    debouncedSearchKeyword,
+    paginationModel.page,
+    paginationModel.pageSize,
+    selectedStatus,
+  ]);
+
+  const columns: GridColDef<HistoricalReport>[] = [
+    {
+      field: "fileName",
+      headerName: "報告名稱",
+      minWidth: 240,
+      flex: 1.2,
+      renderCell: (params: GridRenderCellParams<HistoricalReport, string>) => (
+        <div className="flex h-full items-center py-3 text-sm font-semibold leading-6 text-slate-900">
+          <div className="whitespace-normal break-words">
+            {getReportDisplayName(params.row)}
+          </div>
+        </div>
+      ),
+    },
+    {
+      field: "company",
+      headerName: "公司",
+      minWidth: 170,
+      flex: 0.9,
+      renderCell: (params: GridRenderCellParams<HistoricalReport, string>) => (
+        <div className="flex h-full items-center py-3 text-sm leading-6 text-slate-700">
+          <div className="whitespace-normal break-words">{params.row.company}</div>
+        </div>
+      ),
+    },
+    {
+      field: "reportType",
+      headerName: "報告類型",
+      minWidth: 150,
+      flex: 0.8,
+      renderCell: (params: GridRenderCellParams<HistoricalReport, string>) => (
+        <div className="flex h-full items-center">
+          <Chip
+            label={params.row.reportType}
+            size="small"
+            sx={{
+              fontWeight: 700,
+              color: "#0f766e",
+              backgroundColor: "#ccfbf1",
+              borderRadius: "999px",
+            }}
+          />
+        </div>
+      ),
+    },
+    {
+      field: "period",
+      headerName: "期間",
+      minWidth: 120,
+      flex: 0.55,
+      renderCell: (params: GridRenderCellParams<HistoricalReport, string>) => (
+        <div className="flex h-full items-center text-sm text-slate-700">
+          {params.row.year} {params.row.period}
+        </div>
+      ),
+    },
+    {
+      field: "generatedAt",
+      headerName: "產生時間",
+      minWidth: 170,
+      flex: 0.8,
+      renderCell: (params: GridRenderCellParams<HistoricalReport, string>) => (
+        <div className="flex h-full items-center py-3 text-sm leading-6 text-slate-700">
+          <CalendarClock className="mr-2 h-4 w-4 text-slate-400" />
+          {params.row.generatedAt}
+        </div>
+      ),
+    },
+    {
+      field: "status",
+      headerName: "狀態",
+      minWidth: 110,
+      flex: 0.45,
+      renderCell: (params: GridRenderCellParams<HistoricalReport, ReportStatus>) => {
+        const style = REPORT_STATUS_STYLE[params.row.status];
+
+        return (
+          <div className="flex h-full items-center">
+            <Chip
+              label={params.row.status}
+              size="small"
+              sx={{
+                fontWeight: 700,
+                color: style.color,
+                backgroundColor: style.backgroundColor,
+                borderRadius: "999px",
+              }}
+            />
+          </div>
+        );
+      },
+    },
+    {
+      field: "actions",
+      headerName: "操作",
+      width: 188,
+      minWidth: 188,
+      maxWidth: 188,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      align: "right",
+      headerAlign: "right",
+      renderCell: (params: GridRenderCellParams<HistoricalReport>) => {
+        const disabled = params.row.status !== "已完成";
+
+        return (
+          <div className="flex h-full items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="px-2.5"
+              disabled={disabled}
+              onClick={() => openDashboard(params.row)}
+            >
+              <Eye className="h-4 w-4 text-teal-700" />
+              View
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="px-2.5"
+              disabled={disabled}
+              onClick={async () => {
+                try {
+                  setDownloadError("");
+                  await downloadHistoricalReport(params.row);
+                } catch (error) {
+                  setDownloadError(
+                    error instanceof Error ? error.message : "歷史報告下載失敗",
+                  );
+                }
+              }}
+            >
+              <Download className="h-4 w-4 text-blue-700" />
+              Word
+            </Button>
+          </div>
+        );
+      },
+    },
+  ];
+
+  return (
+    <main className="h-full overflow-y-auto">
+      <div className="mx-auto flex w-full flex-col gap-6 px-4 py-6 md:px-6">
+        <section className="overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-teal-50 via-white to-slate-50 p-6 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-3xl">
+              <div className="text-sm font-semibold tracking-[0.2em] text-teal-700">
+                REPORT HISTORY
+              </div>
+              <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900">
+                歷史報告
+              </h1>
+              <p className="mt-3 text-sm leading-7 text-slate-600">
+                查看已產生完成的徵審報告，直接重新下載 Word，避免重複等待報告產生流程。
+              </p>
+            </div>
+            <div className="pointer-events-none ml-auto hidden flex-1 justify-end text-teal-600/20 md:flex">
+              <HistoryEduIcon sx={{ fontSize: "clamp(112px,14vw,180px)" }} />
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-3xl border border-border bg-background p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">已產生的報告</h2>
+              <p className="text-sm text-muted-foreground">
+                可依狀態、公司、年度、報告名稱與產生人員搜尋歷史報告。
+              </p>
+              {isLoadingReports ? (
+                <p className="mt-2 text-sm text-slate-500">載入歷史報告中...</p>
+              ) : null}
+              {historyError ? (
+                <p className="mt-2 text-sm font-medium text-red-600">{historyError}</p>
+              ) : null}
+              {downloadError ? (
+                <p className="mt-2 text-sm font-medium text-red-600">{downloadError}</p>
+              ) : null}
+              {dashboardError ? (
+                <p className="mt-2 text-sm font-medium text-red-600">{dashboardError}</p>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <select
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none"
+                value={selectedStatus}
+                onChange={(event) => setSelectedStatus(event.target.value)}
+              >
+                <option value="">全部狀態</option>
+                <option value="已完成">已完成</option>
+                <option value="產生中">產生中</option>
+                <option value="失敗">失敗</option>
+              </select>
+
+              <div className="relative w-full min-w-[260px] sm:w-[340px]">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={searchKeyword}
+                  onChange={(event) => setSearchKeyword(event.target.value)}
+                  placeholder="搜尋公司、報告名稱、年度、類型或產生人員"
+                  className="pl-10"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5">
+            <Box
+              sx={{
+                width: "100%",
+                "& .MuiDataGrid-cell": {
+                  alignItems: "stretch",
+                },
+                "& .MuiDataGrid-columnHeaders": {
+                  backgroundColor: "#f8fafc",
+                },
+              }}
+            >
+              <DataGrid
+                autoHeight
+                rows={reportHistory}
+                columns={columns}
+                loading={isLoadingReports}
+                disableRowSelectionOnClick
+                disableColumnFilter
+                disableDensitySelector
+                disableColumnSelector
+                initialState={{
+                  sorting: {
+                    sortModel: [{ field: "generatedAt", sort: "desc" }],
+                  },
+                }}
+                paginationMode={isServerPaginated ? "server" : "client"}
+                paginationModel={paginationModel}
+                onPaginationModelChange={setPaginationModel}
+                rowCount={isServerPaginated ? rowCount : undefined}
+                pageSizeOptions={[5, 10, 25, { value: -1, label: 'All' }]}
+                localeText={{
+                  noRowsLabel: "目前沒有符合條件的歷史報告",
+                }}
+                getRowHeight={() => 84}
+              />
+            </Box>
+          </div>
+        </section>
+      </div>
+
+      <Dialog
+        open={!!selectedDashboardReport}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedDashboardReport(null);
+            setSelectedDashboard(null);
+            setDashboardError("");
+          }
+        }}
+      >
+        <DialogContent className="max-h-[92vh] w-[calc(100vw-48px)] max-w-7xl overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-0 shadow-2xl">
+          <DialogHeader className="border-b border-slate-200 bg-white px-6 py-5 text-left shadow-sm">
+            <DialogTitle className="text-2xl text-slate-950">
+              {selectedDashboardReport ? getReportDisplayName(selectedDashboardReport) : "Dashboard"}
+            </DialogTitle>
+            <DialogDescription className="text-slate-600">
+              {selectedDashboardReport
+                ? `${selectedDashboardReport.company}｜${selectedDashboardReport.year} ${selectedDashboardReport.period}`
+                : "歷史報告 Dashboard"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex max-h-[calc(92vh-96px)] w-full flex-col gap-5 overflow-y-auto px-6 py-6">
+            {isDashboardLoading ? (
+              <div className="rounded-lg border border-slate-200 bg-white px-5 py-10 text-center text-sm text-slate-500">
+                Dashboard 載入中...
+              </div>
+            ) : null}
+
+            {dashboardError ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-medium text-rose-700">
+                {dashboardError}
+              </div>
+            ) : null}
+
+            {selectedDashboard ? (
+              <>
+                <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                  <h2 className="text-lg font-semibold text-slate-950">AI 分析摘要</h2>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    {selectedDashboard.summaryItems.length ? selectedDashboard.summaryItems.map((item) => (
+                      <div key={item} className="rounded-md border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm leading-6 text-slate-900">
+                        {item}
+                      </div>
+                    )) : (
+                      <div className="rounded-md border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500 md:col-span-2">
+                        此報告沒有分析摘要。
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                  <h2 className="text-lg font-semibold text-slate-950">
+                    {selectedDashboard.metricsTitle || "關鍵財務指標"}
+                  </h2>
+                  <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
+                    {selectedDashboard.metrics.length ? selectedDashboard.metrics.map((item) => (
+                      <DashboardMetricCard key={item.label} item={item} />
+                    )) : (
+                      <div className="rounded-md border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500 md:col-span-2 xl:col-span-6">
+                        此報告沒有關鍵財務指標。
+                      </div>
+                    )}
+                  </div>
+                </section>
+
+                <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <h2 className="text-lg font-semibold text-slate-950">財務趨勢圖</h2>
+                    <span className="text-xs font-medium text-slate-500">
+                      近八季
+                    </span>
+                  </div>
+                  <div className="mt-5 h-[420px] min-w-0 overflow-x-auto">
+                    {selectedDashboard.financialTrends.length ? (
+                      <div className="h-full min-w-[860px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart
+                            data={selectedDashboard.financialTrends}
+                            margin={{ top: 8, right: 12, bottom: 24, left: 8 }}
+                            barGap={4}
+                            barCategoryGap="16%"
+                          >
+                            <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+                            <XAxis
+                              dataKey="period"
+                              interval={0}
+                              axisLine={{ stroke: "#cbd5e1" }}
+                              tickLine={false}
+                              tick={{ fill: "#475569", fontSize: 12 }}
+                            />
+                            <YAxis
+                              yAxisId="amount"
+                              width={58}
+                              axisLine={false}
+                              tickLine={false}
+                              tick={{ fill: "#475569", fontSize: 12 }}
+                              tickFormatter={(value: number) => value.toLocaleString("zh-TW")}
+                              label={{
+                                value: "億元",
+                                angle: -90,
+                                position: "insideLeft",
+                                fill: "#475569",
+                                fontSize: 12,
+                              }}
+                            />
+                            <YAxis
+                              yAxisId="margin"
+                              orientation="right"
+                              width={44}
+                              domain={[0, 70]}
+                              axisLine={false}
+                              tickLine={false}
+                              tick={{ fill: "#475569", fontSize: 12 }}
+                              tickFormatter={(value: number) => formatPercent(value)}
+                              label={{
+                                value: "百分比",
+                                angle: 90,
+                                position: "insideRight",
+                                fill: "#475569",
+                                fontSize: 12,
+                              }}
+                            />
+                            <Tooltip
+                              cursor={{ fill: "#f1f5f9" }}
+                              formatter={(value, name) => {
+                                if (value === null || value === undefined) {
+                                  return ["-", name];
+                                }
+                                const numericValue = Number(value);
+                                return [
+                                  name === "毛利率"
+                                    ? formatPercent(numericValue)
+                                    : formatAmount(numericValue),
+                                  name,
+                                ];
+                              }}
+                              contentStyle={{
+                                borderColor: "#cbd5e1",
+                                borderRadius: 8,
+                                color: "#0f172a",
+                                boxShadow: "0 10px 30px rgba(15, 23, 42, 0.12)",
+                              }}
+                            />
+                            <Legend
+                              verticalAlign="top"
+                              align="center"
+                              iconType="circle"
+                              wrapperStyle={{ paddingBottom: 12, fontSize: 13 }}
+                            />
+                            <Bar yAxisId="amount" dataKey="revenue" name="營收" fill="#14b8a6" radius={[4, 4, 0, 0]} />
+                            <Bar yAxisId="amount" dataKey="netIncome" name="淨利" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                            <Line
+                              yAxisId="margin"
+                              type="monotone"
+                              dataKey="grossMargin"
+                              name="毛利率"
+                              stroke="#1d4ed8"
+                              strokeWidth={3}
+                              dot={{ r: 4, fill: "#1d4ed8", strokeWidth: 0 }}
+                              activeDot={{ r: 6, fill: "#1d4ed8", stroke: "#ffffff", strokeWidth: 2 }}
+                            />
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <div className="flex h-full items-center justify-center rounded-md border border-dashed border-slate-300 px-4 text-center text-sm text-slate-500">
+                        此報告沒有財務趨勢資料。
+                      </div>
+                    )}
+                  </div>
+                </section>
+              </>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </main>
+  );
+}

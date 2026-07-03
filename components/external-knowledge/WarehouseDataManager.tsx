@@ -21,11 +21,21 @@ import StorefrontIcon from "@mui/icons-material/Storefront";
 import TravelExploreIcon from "@mui/icons-material/TravelExplore";
 import TvIcon from "@mui/icons-material/Tv";
 import { Box, Chip } from "@mui/material";
-import { Database, ExternalLink, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import {
+  CalendarClock,
+  Database,
+  ExternalLink,
+  Eye,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
 import {
   DataGrid,
   type GridColDef,
   type GridRenderCellParams,
+  type GridPaginationModel,
 } from "@mui/x-data-grid";
 import { toast } from "sonner";
 
@@ -45,9 +55,14 @@ import {
   WAREHOUSE_DATA_CATEGORIES,
   type WarehouseDataCategory,
   type WarehouseDataEntry,
-  readWarehouseDataEntries,
-  writeWarehouseDataEntries,
 } from "@/data/warehouseData";
+import {
+  createWarehouseDataEntry,
+  deleteWarehouseDataEntry,
+  fetchWarehouseDataEntries,
+  fetchWarehouseDataEntry,
+  updateWarehouseDataEntry,
+} from "@/data/warehouseDataApi";
 import { cn } from "@/utils/cn";
 import { Button } from "@/components/ui/button";
 import {
@@ -109,14 +124,6 @@ const INDUSTRY_ICON_MAP = {
   觀光旅遊: <TravelExploreIcon {...INDUSTRY_ICON_PROPS} />,
 } as const;
 
-function createId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
 function renderCategoryLabel(category: WarehouseDataCategory) {
   const categoryStyle = CATEGORY_STYLE_MAP[category];
 
@@ -151,12 +158,30 @@ function readStoredCompany() {
   }
 }
 
+function formatDateTime(value: string | null | undefined) {
+  const trimmedValue = String(value ?? "").trim();
+  if (!trimmedValue) return "未設定";
+
+  const date = new Date(trimmedValue);
+  if (Number.isNaN(date.getTime())) return trimmedValue;
+
+  return date.toLocaleString("zh-TW");
+}
+
 export function WarehouseDataManager() {
   const [entries, setEntries] = useState<WarehouseDataEntry[]>([]);
   const [searchKeyword, setSearchKeyword] = useState("");
+  const [debouncedSearchKeyword, setDebouncedSearchKeyword] = useState("");
   const [selectedCompanyLabel, setSelectedCompanyLabel] = useState("");
   const [selectedCompanyPromptValue, setSelectedCompanyPromptValue] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
+  const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
+    page: 0,
+    pageSize: 10,
+  });
+  const [rowCount, setRowCount] = useState(0);
+  const [isLoadingEntries, setIsLoadingEntries] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<WarehouseDataEntry | null>(null);
   const [detailEntry, setDetailEntry] = useState<WarehouseDataEntry | null>(null);
@@ -175,29 +200,6 @@ export function WarehouseDataManager() {
     () => getCompaniesByIndustry(industry),
     [industry],
   );
-
-  const filteredEntries = useMemo(() => {
-    const trimmedKeyword = searchKeyword.trim().toLowerCase();
-
-    return entries.filter((entry) => {
-      const matchesCategory = selectedCategory ? entry.category === selectedCategory : true;
-      if (!matchesCategory) return false;
-
-      if (!trimmedKeyword) return true;
-
-      return [
-        entry.title,
-        entry.category,
-        entry.companyLabel,
-        entry.summary,
-        entry.source,
-        entry.industry,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(trimmedKeyword);
-    });
-  }, [entries, searchKeyword, selectedCategory]);
 
   const columns: GridColDef<WarehouseDataEntry>[] = [
     {
@@ -301,6 +303,34 @@ export function WarehouseDataManager() {
       ),
     },
     {
+      field: "recordUpdatedAt",
+      headerName: "資料更新時間",
+      minWidth: 170,
+      flex: 0.8,
+      renderCell: (
+        params: GridRenderCellParams<WarehouseDataEntry, string>,
+      ) => (
+        <div className="flex h-full items-center gap-2 py-3 text-sm leading-6 text-slate-700">
+          <CalendarClock className="h-4 w-4 text-slate-400" />
+          <span>{formatDateTime(params.row.recordUpdatedAt)}</span>
+        </div>
+      ),
+    },
+    {
+      field: "createdAt",
+      headerName: "建立時間",
+      minWidth: 170,
+      flex: 0.8,
+      renderCell: (
+        params: GridRenderCellParams<WarehouseDataEntry, string>,
+      ) => (
+        <div className="flex h-full items-center gap-2 py-3 text-sm leading-6 text-slate-700">
+          <CalendarClock className="h-4 w-4 text-slate-400" />
+          <span>{formatDateTime(params.row.createdAt)}</span>
+        </div>
+      ),
+    },
+    {
       field: "actions",
       headerName: "操作",
       minWidth: 280,
@@ -316,7 +346,7 @@ export function WarehouseDataManager() {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => setDetailEntry(params.row)}
+            onClick={() => openDetailModal(params.row)}
           >
             <Eye className="h-4 w-4" />
             查看內容
@@ -352,10 +382,31 @@ export function WarehouseDataManager() {
     },
   ];
 
-  const paginationModel = useMemo(() => ({ page: 0, pageSize: 10 }), []);
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearchKeyword(searchKeyword);
+      setPaginationModel((current) => ({ ...current, page: 0 }));
+    }, 350);
 
-  function loadEntries() {
-    setEntries(readWarehouseDataEntries());
+    return () => window.clearTimeout(timeout);
+  }, [searchKeyword]);
+
+  async function loadEntries() {
+    try {
+      setIsLoadingEntries(true);
+      const result = await fetchWarehouseDataEntries({
+        page: paginationModel.page,
+        pageSize: paginationModel.pageSize,
+        search: debouncedSearchKeyword,
+        category: selectedCategory,
+      });
+      setEntries(result.entries);
+      setRowCount(result.total);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "讀取資料倉儲失敗");
+    } finally {
+      setIsLoadingEntries(false);
+    }
   }
 
   function resetCreateForm(defaultCompanyLabel?: string) {
@@ -375,6 +426,14 @@ export function WarehouseDataManager() {
     setEditingEntry(null);
     resetCreateForm(selectedCompanyLabel);
     setIsCreateModalOpen(true);
+  }
+
+  async function openDetailModal(entry: WarehouseDataEntry) {
+    try {
+      setDetailEntry(await fetchWarehouseDataEntry(entry.id));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "讀取資料詳情失敗");
+    }
   }
 
   function openEditModal(entry: WarehouseDataEntry) {
@@ -404,9 +463,43 @@ export function WarehouseDataManager() {
     const storedCompany = readStoredCompany();
     setSelectedCompanyLabel(storedCompany.selectedCompanyLabel);
     setSelectedCompanyPromptValue(storedCompany.selectedCompanyPromptValue);
-    loadEntries();
     resetCreateForm(storedCompany.selectedCompanyLabel);
   }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadCurrentEntries() {
+      try {
+        setIsLoadingEntries(true);
+        const result = await fetchWarehouseDataEntries({
+          page: paginationModel.page,
+          pageSize: paginationModel.pageSize,
+          search: debouncedSearchKeyword,
+          category: selectedCategory,
+        });
+        if (!isMounted) return;
+        setEntries(result.entries);
+        setRowCount(result.total);
+      } catch (error) {
+        if (!isMounted) return;
+        toast.error(error instanceof Error ? error.message : "讀取資料倉儲失敗");
+      } finally {
+        if (isMounted) setIsLoadingEntries(false);
+      }
+    }
+
+    loadCurrentEntries();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    debouncedSearchKeyword,
+    paginationModel.page,
+    paginationModel.pageSize,
+    selectedCategory,
+  ]);
 
   useEffect(() => {
     if (!industry) {
@@ -428,7 +521,7 @@ export function WarehouseDataManager() {
     setCompanyLabel(companyOptions[0]?.label ?? "");
   }, [companyLabel, companyOptions, industry, selectedCompanyLabel]);
 
-  function handleDelete(entryId: string) {
+  async function handleDelete(entryId: string) {
     const targetEntry = entries.find((entry) => entry.id === entryId);
     if (!targetEntry) return;
 
@@ -437,13 +530,25 @@ export function WarehouseDataManager() {
     );
     if (!shouldDelete) return;
 
-    const nextEntries = entries.filter((entry) => entry.id !== entryId);
-    setEntries(nextEntries);
-    writeWarehouseDataEntries(nextEntries);
-    toast.success("已刪除資料");
+    try {
+      await deleteWarehouseDataEntry(entryId);
+      toast.success("已刪除資料");
+      if (entries.length === 1 && paginationModel.page > 0) {
+        setPaginationModel((current) => ({
+          ...current,
+          page: current.page - 1,
+        }));
+        return;
+      }
+      await loadEntries();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "刪除資料失敗");
+    }
   }
 
-  function handleSaveEntry() {
+  async function handleSaveEntry() {
+    if (isSaving) return;
+
     const trimmedTitle = title.trim();
     const trimmedSource = source.trim();
     const trimmedSummary = summary.trim();
@@ -477,8 +582,7 @@ export function WarehouseDataManager() {
       return;
     }
 
-    const nextEntry: WarehouseDataEntry = {
-      id: editingEntry?.id ?? createId(),
+    const nextEntry = {
       category,
       title: trimmedTitle,
       industry: company.industry,
@@ -487,18 +591,25 @@ export function WarehouseDataManager() {
       summary: trimmedSummary,
       source: trimmedSource,
       url: trimmedUrl,
-      updatedAt: new Date().toISOString(),
     };
 
-    const nextEntries = editingEntry
-      ? [nextEntry, ...entries.filter((entry) => entry.id !== editingEntry.id)]
-      : [nextEntry, ...entries];
-    setEntries(nextEntries);
-    writeWarehouseDataEntries(nextEntries);
-    setIsCreateModalOpen(false);
-    setEditingEntry(null);
-    resetCreateForm(selectedCompanyLabel);
-    toast.success(editingEntry ? "已更新資料" : "已新增資料");
+    try {
+      setIsSaving(true);
+      if (editingEntry) {
+        await updateWarehouseDataEntry(editingEntry.id, nextEntry);
+      } else {
+        await createWarehouseDataEntry(nextEntry);
+      }
+      setIsCreateModalOpen(false);
+      setEditingEntry(null);
+      resetCreateForm(selectedCompanyLabel);
+      toast.success(editingEntry ? "已更新資料" : "已新增資料");
+      await loadEntries();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "儲存資料失敗");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   const currentCompanySummary =
@@ -540,7 +651,10 @@ export function WarehouseDataManager() {
               <select
                 className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none"
                 value={selectedCategory}
-                onChange={(event) => setSelectedCategory(event.target.value)}
+                onChange={(event) => {
+                  setSelectedCategory(event.target.value);
+                  setPaginationModel((current) => ({ ...current, page: 0 }));
+                }}
               >
                 <option value="">全部分類</option>
                 {WAREHOUSE_DATA_CATEGORIES.map((option) => (
@@ -585,14 +699,23 @@ export function WarehouseDataManager() {
             >
               <DataGrid
                 autoHeight
-                rows={filteredEntries}
+                rows={entries}
                 columns={columns}
+                loading={isLoadingEntries}
                 disableRowSelectionOnClick
                 disableColumnFilter
                 disableDensitySelector
                 disableColumnSelector
+                initialState={{
+                  sorting: {
+                    sortModel: [{ field: "createdAt", sort: "desc" }],
+                  },
+                }}
+                paginationMode="server"
                 paginationModel={paginationModel}
-                pageSizeOptions={[10]}
+                onPaginationModelChange={setPaginationModel}
+                rowCount={rowCount}
+                pageSizeOptions={[5, 10, 25, { value: -1, label: 'All' }]}
                 localeText={{
                   noRowsLabel: "目前沒有符合條件的資料",
                 }}
@@ -737,8 +860,8 @@ export function WarehouseDataManager() {
               >
                 取消
               </Button>
-              <Button type="button" onClick={handleSaveEntry}>
-                {editingEntry ? "儲存變更" : "新增資料"}
+              <Button type="button" onClick={handleSaveEntry} disabled={isSaving}>
+                {isSaving ? "儲存中..." : editingEntry ? "儲存變更" : "新增資料"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -784,6 +907,36 @@ export function WarehouseDataManager() {
                       fontWeight: 700,
                       color: "#475569",
                       backgroundColor: "#f1f5f9",
+                      borderRadius: "999px",
+                    }}
+                  />
+                  <Chip
+                    label={
+                      <span className="flex items-center gap-1.5">
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        <span>資料更新時間 {formatDateTime(detailEntry.recordUpdatedAt)}</span>
+                      </span>
+                    }
+                    size="small"
+                    sx={{
+                      fontWeight: 700,
+                      color: "#075985",
+                      backgroundColor: "#e0f2fe",
+                      borderRadius: "999px",
+                    }}
+                  />
+                  <Chip
+                    label={
+                      <span className="flex items-center gap-1.5">
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        <span>建立時間 {formatDateTime(detailEntry.createdAt)}</span>
+                      </span>
+                    }
+                    size="small"
+                    sx={{
+                      fontWeight: 700,
+                      color: "#075985",
+                      backgroundColor: "#e0f2fe",
                       borderRadius: "999px",
                     }}
                   />
