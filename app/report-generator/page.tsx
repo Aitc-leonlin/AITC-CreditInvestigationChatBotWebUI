@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import {
   AlertCircle,
@@ -71,19 +71,12 @@ type ReportDashboard = {
 type ReportStatus = "idle" | "generating" | "interrupted" | "completed";
 
 const idleProgressItems: ProgressItem[] = [
-  { label: "財務報表分析", status: "待產生" },
-  { label: "現金流量分析", status: "待產生" },
-  { label: "產業分析", status: "待產生" },
-  { label: "新聞風險分析", status: "待產生" },
+  { label: "基本資料生成", status: "待產生" },
+  { label: "資產負債分析生成", status: "待產生" },
+  { label: "財務比率分析生成", status: "待產生" },
+  { label: "還款能力分析生成", status: "待產生" },
+  { label: "產業環境分析生成", status: "待產生" },
   { label: "AI 徵審結論生成", status: "待產生" },
-];
-
-const generatingProgressItems: ProgressItem[] = [
-  { label: "財務報表分析", status: "完成" },
-  { label: "現金流量分析", status: "完成" },
-  { label: "產業分析", status: "完成" },
-  { label: "新聞風險分析", status: "處理中..." },
-  { label: "AI 徵審結論生成", status: "處理中..." },
 ];
 
 const initialDashboard: ReportDashboard = {
@@ -99,6 +92,18 @@ const completedProgressItems: ProgressItem[] = idleProgressItems.map((item) => (
   ...item,
   status: "完成",
 }));
+
+function buildGeneratingProgressItems(completedCount: number): ProgressItem[] {
+  return idleProgressItems.map((item, index) => {
+    if (index < completedCount) {
+      return { ...item, status: "完成" };
+    }
+    if (index === completedCount) {
+      return { ...item, status: "處理中..." };
+    }
+    return { ...item, status: "待產生" };
+  });
+}
 
 const metricIconMap = {
   barChart: BarChart3,
@@ -136,13 +141,13 @@ const reportStatusConfig = {
 } as const;
 
 const reportSections = [
-  "公司概要",
-  "財務分析",
-  "現金流量分析",
-  "產業分析",
-  "新聞風險分析",
-  "AI 徵審結論",
-  "附錄：財務報表",
+  "項目資訊",
+  "公司基本資料",
+  "資產負債表",
+  "財稅比率表",
+  "資產負債分析",
+  "還款能力分析",
+  "產業環境分析",
 ];
 
 function formatAmount(value: number) {
@@ -351,6 +356,7 @@ export default function ReportGeneratorPage() {
   const [reportGeneratedAt, setReportGeneratedAt] = useState("");
   const [reportDashboard, setReportDashboard] = useState<ReportDashboard>(initialDashboard);
   const [reportStatus, setReportStatus] = useState<ReportStatus>("idle");
+  const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const selectedCompany = getCompanyByLabel(companyCode);
   const reportCoverImage = selectedCompany?.imagePath ?? "";
@@ -362,6 +368,61 @@ export default function ReportGeneratorPage() {
   const financialTrendRows = reportDashboard.financialTrends;
   const trendStartYear = Number.isFinite(Number(year)) ? Number(year) - 1 : "";
   const trendYearRange = trendStartYear ? `${trendStartYear} - ${year}` : year;
+
+  function stopProgressTimer() {
+    if (progressTimerRef.current) {
+      clearInterval(progressTimerRef.current);
+      progressTimerRef.current = null;
+    }
+  }
+
+  function startProgressTimer(currentYear: string) {
+    stopProgressTimer();
+    const startedAt = Date.now();
+    const durationMs = 5000;
+    const maxGeneratingPercent = 80;
+    const maxGeneratingCompletedItems = Math.max(0, idleProgressItems.length - 1);
+
+    setReportDashboard({
+      summaryItems: ["AI正在產生徵審報告與分析摘要..."],
+      progressItems: buildGeneratingProgressItems(0),
+      progressPercent: 0,
+      metricsTitle: `關鍵財務指標（${currentYear} Q1-Q4）`,
+      metrics: [],
+      financialTrends: [],
+    });
+
+    progressTimerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startedAt;
+      const ratio = Math.min(elapsed / durationMs, 1);
+      const nextPercent = Math.min(
+        maxGeneratingPercent,
+        Math.round(ratio * maxGeneratingPercent),
+      );
+      const completedCount = Math.min(
+        maxGeneratingCompletedItems,
+        Math.floor(ratio * maxGeneratingCompletedItems),
+      );
+
+      setReportDashboard((currentDashboard) => ({
+        ...currentDashboard,
+        progressItems: buildGeneratingProgressItems(completedCount),
+        progressPercent: nextPercent,
+      }));
+
+      if (ratio >= 1) {
+        stopProgressTimer();
+      }
+    }, 500);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (progressTimerRef.current) {
+        clearInterval(progressTimerRef.current);
+      }
+    };
+  }, []);
 
   async function generateReport() {
     const selectedCompanyCode = getCompanyCodeFromLabel(companyCode);
@@ -375,14 +436,7 @@ export default function ReportGeneratorPage() {
     setReportStatus("generating");
     setGenerationMessage("");
     setReportGeneratedAt(formatReportGeneratedAt(new Date()));
-    setReportDashboard({
-      summaryItems: ["AI正在產生徵審報告與分析摘要..."],
-      progressItems: generatingProgressItems,
-      progressPercent: 72,
-      metricsTitle: `關鍵財務指標（${year} Q1-Q4）`,
-      metrics: [],
-      financialTrends: [],
-    });
+    startProgressTimer(year);
 
     try {
       const response = await fetchBackendApi(BACKEND_API_PATHS.reportGeneratorGenerate, {
@@ -422,6 +476,7 @@ export default function ReportGeneratorPage() {
       link.click();
       URL.revokeObjectURL(downloadUrl);
       const dashboardPath = response.headers.get("x-report-dashboard-path");
+      stopProgressTimer();
       if (dashboardPath) {
         setReportDashboard(await fetchReportDashboard(dashboardPath));
       } else {
@@ -430,6 +485,7 @@ export default function ReportGeneratorPage() {
       setReportStatus("completed");
       setGenerationMessage("徵審報告已成功產生並開始下載");
     } catch (error) {
+      stopProgressTimer();
       setReportStatus("interrupted");
       setGenerationMessage(
         error instanceof Error ? error.message : "徵審報告產生請求失敗",
