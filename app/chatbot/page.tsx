@@ -2,6 +2,9 @@ import Image from "next/image";
 
 import { ChatWindow } from "@/components/ChatWindow";
 import { GuideInfoBox } from "@/components/guide/GuideInfoBox";
+import { MembershipRouteGuard } from "@/components/membership/authorization";
+import MembershipSessionGuard from "@/components/membership/MembershipSessionGuard";
+import { MODULE_PERMISSIONS } from "@/data/modulePermissions";
 import { BACKEND_API_PATHS } from "@/utils/api";
 
 export default function ChatbotPage() {
@@ -39,16 +42,20 @@ export default function ChatbotPage() {
   );
 
   return (
-    <ChatWindow
-      endpoint={BACKEND_API_PATHS.chat}
-      emoji="AI"
-      placeholder="請輸入授信調查問題"
-      emptyStateComponent={InfoCard}
-      presetQuestions={[
-        "現金水位是否充足？",
-        "是否有短債壓力？",
-        "近三期營收與獲利趨勢是否惡化？",
-      ]}
-    />
+    <MembershipRouteGuard permission={MODULE_PERMISSIONS.creditAiChat}>
+      <MembershipSessionGuard>
+        <ChatWindow
+          endpoint={BACKEND_API_PATHS.chat}
+          emoji="AI"
+          placeholder="請輸入授信調查問題"
+          emptyStateComponent={InfoCard}
+          presetQuestions={[
+            "現金水位是否充足？",
+            "是否有短債壓力？",
+            "近三期營收與獲利趨勢是否惡化？",
+          ]}
+        />
+      </MembershipSessionGuard>
+    </MembershipRouteGuard>
   );
 }

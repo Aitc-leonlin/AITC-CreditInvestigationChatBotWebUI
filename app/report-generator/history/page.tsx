@@ -34,6 +34,9 @@ import {
 } from "recharts";
 
 import { Button } from "@/components/ui/button";
+import { MembershipRouteGuard } from "@/components/membership/authorization";
+import MembershipSessionGuard from "@/components/membership/MembershipSessionGuard";
+import { MODULE_PERMISSIONS } from "@/data/modulePermissions";
 import {
   Dialog,
   DialogContent,
@@ -42,69 +45,17 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
-
-type ReportStatus = "已完成" | "產生中" | "失敗";
-
-type HistoricalReport = {
-  id: string;
-  publicId: string;
-  title: string;
-  company: string;
-  year: string;
-  period: string;
-  reportType: string;
-  generatedAt: string;
-  generatedBy: string;
-  status: ReportStatus;
-  fileSize: string;
-  fileName?: string;
-};
-
-type ReportHistoryResponse = {
-  reports?: HistoricalReport[];
-  total?: number;
-  page?: number;
-  pageSize?: number;
-  offset?: number;
-  detail?: string;
-  error?: string;
-};
-
-type DashboardMetric = {
-  label: string;
-  value: string;
-  trend: string;
-  iconKey?: "barChart" | "trendingUp" | "scale" | "shieldCheck" | "dollarSign";
-  calculationStatus?: "complete" | "incomplete";
-  calculationReason?: string;
-};
-
-type FinancialTrend = {
-  period: string;
-  revenue: number | null;
-  netIncome: number | null;
-  grossMargin: number | null;
-};
-
-type ReportDashboard = {
-  id: string;
-  historyId: string;
-  summaryItems: string[];
-  progressItems: { label: string; status: string }[];
-  progressPercent: number;
-  metricsTitle: string;
-  metrics: DashboardMetric[];
-  financialTrends: FinancialTrend[];
-  createdAt: string;
-  updatedAt: string;
-};
-
-type ReportDashboardResponse = {
-  dashboard?: ReportDashboard;
-  detail?: string;
-  error?: string;
-};
+import {
+  downloadReportHistoryDocument,
+  fetchReportDashboard,
+  fetchReportHistory,
+} from "@/services/api/reportGeneratorApi";
+import type {
+  HistoricalReport,
+  ReportDashboard,
+  ReportDashboardMetric,
+  ReportStatus,
+} from "@/types/reportGenerator";
 
 const REPORT_STATUS_STYLE: Record<
   ReportStatus,
@@ -123,17 +74,6 @@ const metricIconMap = {
   dollarSign: DollarSign,
 } as const;
 
-function getFilenameFromContentDisposition(contentDisposition: string | null) {
-  if (!contentDisposition) return "";
-
-  const encodedFilename = contentDisposition.match(/filename\*=UTF-8''([^;]+)/)?.[1];
-  if (encodedFilename) {
-    return decodeURIComponent(encodedFilename);
-  }
-
-  return contentDisposition.match(/filename="([^"]+)"/)?.[1] ?? "";
-}
-
 function getReportDisplayName(report: HistoricalReport) {
   return (report.fileName || report.title).replace(/\.docx$/i, "");
 }
@@ -146,7 +86,7 @@ function formatPercent(value: number) {
   return `${value.toLocaleString("zh-TW")}%`;
 }
 
-function DashboardMetricCard(props: { item: DashboardMetric }) {
+function DashboardMetricCard(props: { item: ReportDashboardMetric }) {
   const Icon = props.item.iconKey ? metricIconMap[props.item.iconKey] : BarChart3;
   const hasCalculationError =
     props.item.calculationStatus === "incomplete" || Boolean(props.item.calculationReason);
@@ -227,53 +167,12 @@ function DashboardMetricCard(props: { item: DashboardMetric }) {
   );
 }
 
-async function fetchReportDashboard(report: HistoricalReport) {
-  const response = await fetchBackendApi(
-    `${BACKEND_API_PATHS.reportGeneratorHistory}/${report.id}/dashboard`,
-    { cache: "no-store" },
-  );
-  const json = await response.json().catch(() => null) as ReportDashboardResponse | null;
-
-  if (!response.ok) {
-    throw new Error(json?.detail ?? json?.error ?? "Dashboard 載入失敗");
-  }
-
-  if (!json?.dashboard) {
-    throw new Error("Dashboard 資料格式不正確");
-  }
-
-  return {
-    ...json.dashboard,
-    financialTrends: json.dashboard.financialTrends ?? [],
-  };
-}
-
 async function downloadHistoricalReport(report: HistoricalReport) {
-  const response = await fetchBackendApi(
-    `${BACKEND_API_PATHS.reportGeneratorHistory}/${report.publicId}/download`,
-  );
-
-  if (!response.ok) {
-    const contentType = response.headers.get("content-type") ?? "";
-    const errorPayload = contentType.includes("application/json")
-      ? await response.json().catch(() => null)
-      : null;
-    const errorText = errorPayload ? "" : await response.text().catch(() => "");
-    throw new Error(
-      errorPayload?.detail ??
-        errorPayload?.error ??
-        (errorText || "歷史報告下載失敗"),
-    );
-  }
-
-  const reportBlob = await response.blob();
-  const downloadUrl = URL.createObjectURL(reportBlob);
-  const responseFilename = getFilenameFromContentDisposition(
-    response.headers.get("content-disposition"),
-  );
+  const documentResult = await downloadReportHistoryDocument(report);
+  const downloadUrl = URL.createObjectURL(documentResult.blob);
   const link = document.createElement("a");
   link.href = downloadUrl;
-  link.download = responseFilename || report.fileName || `${report.id}.docx`;
+  link.download = documentResult.filename;
   link.click();
   URL.revokeObjectURL(downloadUrl);
 }
@@ -306,7 +205,7 @@ export default function ReportHistoryPage() {
     setIsDashboardLoading(true);
 
     try {
-      setSelectedDashboard(await fetchReportDashboard(report));
+      setSelectedDashboard(await fetchReportDashboard(report.id));
     } catch (error) {
       setDashboardError(error instanceof Error ? error.message : "Dashboard 載入失敗");
     } finally {
@@ -330,41 +229,25 @@ export default function ReportHistoryPage() {
   useEffect(() => {
     let ignore = false;
 
-    const page = paginationModel.page + 1;
-    const offset = paginationModel.page * paginationModel.pageSize;
-    const searchParams = new URLSearchParams({
-      page: String(page),
-      pageSize: String(paginationModel.pageSize),
-      offset: String(offset),
-    });
-
-    if (debouncedSearchKeyword.trim()) {
-      searchParams.set("keyword", debouncedSearchKeyword.trim());
-    }
-    if (selectedStatus.trim()) {
-      searchParams.set("status", selectedStatus.trim());
-    }
-
     async function loadReportHistory() {
       try {
         setIsLoadingReports(true);
         setHistoryError("");
-        const response = await fetchBackendApi(
-          `${BACKEND_API_PATHS.reportGeneratorHistory}?${searchParams.toString()}`,
-          { cache: "no-store" },
-        );
-        const json = await response.json().catch(() => null) as ReportHistoryResponse | null;
-
-        if (!response.ok) {
-          throw new Error(json?.detail ?? json?.error ?? "歷史報告載入失敗");
-        }
+        const result = await fetchReportHistory({
+          page: paginationModel.page + 1,
+          pageSize: paginationModel.pageSize,
+          keyword: debouncedSearchKeyword,
+          status: selectedStatus,
+        });
 
         if (!ignore) {
-          const reports = json?.reports;
-          const total = json?.total;
-          setReportHistory(Array.isArray(reports) ? reports : []);
-          setIsServerPaginated(typeof total === "number");
-          setRowCount(typeof total === "number" ? total : reports?.length ?? 0);
+          setReportHistory(result.reports);
+          setIsServerPaginated(typeof result.total === "number");
+          setRowCount(
+            typeof result.total === "number"
+              ? result.total
+              : result.reports.length,
+          );
         }
       } catch (error) {
         if (!ignore) {
@@ -537,7 +420,9 @@ export default function ReportHistoryPage() {
   ];
 
   return (
-    <main className="h-full overflow-y-auto">
+    <MembershipRouteGuard permission={MODULE_PERMISSIONS.reportGeneratorHistory}>
+      <MembershipSessionGuard>
+        <main className="h-full overflow-y-auto">
       <div className="mx-auto flex w-full flex-col gap-6 px-4 py-6 md:px-6">
         <section className="overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-teal-50 via-white to-slate-50 p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -822,6 +707,8 @@ export default function ReportHistoryPage() {
           </div>
         </DialogContent>
       </Dialog>
-    </main>
+        </main>
+      </MembershipSessionGuard>
+    </MembershipRouteGuard>
   );
 }

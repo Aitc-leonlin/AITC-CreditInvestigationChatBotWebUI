@@ -34,43 +34,24 @@ import {
   YAxis,
 } from "recharts";
 import { COMPANY_OPTIONS, getCompanyByLabel } from "@/data/companyKnowledge";
-import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
+import { MembershipRouteGuard } from "@/components/membership/authorization";
+import MembershipSessionGuard from "@/components/membership/MembershipSessionGuard";
+import { MODULE_PERMISSIONS } from "@/data/modulePermissions";
+import {
+  fetchReportDashboardByPath,
+  generateReportDocument,
+} from "@/services/api/reportGeneratorApi";
+import type {
+  ReportDashboard,
+  ReportDashboardMetric,
+  ReportProgressItem,
+} from "@/types/reportGenerator";
 
 const quarters = ["Q1", "Q2", "Q3", "Q4"];
 
-type ProgressItem = {
-  label: string;
-  status: string;
-};
-
-type DashboardMetric = {
-  label: string;
-  value: string;
-  trend: string;
-  iconKey: "barChart" | "trendingUp" | "scale" | "shieldCheck" | "dollarSign";
-  calculationStatus?: "complete" | "incomplete";
-  calculationReason?: string;
-};
-
-type FinancialTrend = {
-  period: string;
-  revenue: number | null;
-  netIncome: number | null;
-  grossMargin: number | null;
-};
-
-type ReportDashboard = {
-  summaryItems: string[];
-  progressItems: ProgressItem[];
-  progressPercent: number;
-  metricsTitle: string;
-  metrics: DashboardMetric[];
-  financialTrends: FinancialTrend[];
-};
-
 type ReportStatus = "idle" | "generating" | "interrupted" | "completed";
 
-const idleProgressItems: ProgressItem[] = [
+const idleProgressItems: ReportProgressItem[] = [
   { label: "基本資料生成", status: "待產生" },
   { label: "資產負債分析生成", status: "待產生" },
   { label: "財務比率分析生成", status: "待產生" },
@@ -88,12 +69,12 @@ const initialDashboard: ReportDashboard = {
   financialTrends: [],
 };
 
-const completedProgressItems: ProgressItem[] = idleProgressItems.map((item) => ({
+const completedProgressItems: ReportProgressItem[] = idleProgressItems.map((item) => ({
   ...item,
   status: "完成",
 }));
 
-function buildGeneratingProgressItems(completedCount: number): ProgressItem[] {
+function buildGeneratingProgressItems(completedCount: number): ReportProgressItem[] {
   return idleProgressItems.map((item, index) => {
     if (index < completedCount) {
       return { ...item, status: "完成" };
@@ -204,8 +185,8 @@ function SelectField(props: {
   );
 }
 
-function MetricCard(props: { item: DashboardMetric }) {
-  const Icon = metricIconMap[props.item.iconKey] ?? BarChart3;
+function MetricCard(props: { item: ReportDashboardMetric }) {
+  const Icon = props.item.iconKey ? metricIconMap[props.item.iconKey] : BarChart3;
   const isIncomplete = props.item.calculationStatus === "incomplete";
   const hasCalculationError = isIncomplete || Boolean(props.item.calculationReason);
 
@@ -304,17 +285,6 @@ function getCompanyFullNameFromLabel(companyLabel: string) {
   return companyLabel.split("/")[0]?.trim() ?? companyLabel;
 }
 
-function getFilenameFromContentDisposition(contentDisposition: string | null) {
-  if (!contentDisposition) return "";
-
-  const encodedFilename = contentDisposition.match(/filename\*=UTF-8''([^;]+)/)?.[1];
-  if (encodedFilename) {
-    return decodeURIComponent(encodedFilename);
-  }
-
-  return contentDisposition.match(/filename="([^"]+)"/)?.[1] ?? "";
-}
-
 function getFallbackCompletedDashboard(year: string): ReportDashboard {
   return {
     summaryItems: ["徵審報告已成功產生，完整內容請開啟下載檔案查看。"],
@@ -323,26 +293,6 @@ function getFallbackCompletedDashboard(year: string): ReportDashboard {
     metricsTitle: `關鍵財務指標（${year} Q1-Q4）`,
     metrics: [],
     financialTrends: [],
-  };
-}
-
-async function fetchReportDashboard(path: string) {
-  const response = await fetchBackendApi(path);
-  const json = await response.json().catch(() => null) as
-    | { dashboard?: ReportDashboard; detail?: string; error?: string }
-    | null;
-
-  if (!response.ok) {
-    throw new Error(json?.detail ?? json?.error ?? "報告資訊載入失敗");
-  }
-
-  if (!json?.dashboard) {
-    throw new Error("報告資訊格式不正確");
-  }
-
-  return {
-    ...json.dashboard,
-    financialTrends: json.dashboard.financialTrends ?? [],
   };
 }
 
@@ -439,46 +389,21 @@ export default function ReportGeneratorPage() {
     startProgressTimer(year);
 
     try {
-      const response = await fetchBackendApi(BACKEND_API_PATHS.reportGeneratorGenerate, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        },
-        body: JSON.stringify({
-          companyCode: selectedCompanyCode,
-          companyLabel: companyCode,
-          year,
-        }),
+      const documentResult = await generateReportDocument({
+        companyCode: selectedCompanyCode,
+        companyLabel: companyCode,
+        year,
       });
 
-      if (!response.ok) {
-        const contentType = response.headers.get("content-type") ?? "";
-        const errorPayload = contentType.includes("application/json")
-          ? await response.json().catch(() => null)
-          : null;
-        const errorText = errorPayload ? "" : await response.text().catch(() => "");
-        const errorMessage =
-          errorPayload?.detail ??
-          errorPayload?.error ??
-          (errorText || "徵審報告產生請求失敗");
-        throw new Error(errorMessage);
-      }
-
-      const reportBlob = await response.blob();
-      const downloadUrl = URL.createObjectURL(reportBlob);
-      const responseFilename = getFilenameFromContentDisposition(
-        response.headers.get("content-disposition"),
-      );
+      const downloadUrl = URL.createObjectURL(documentResult.blob);
       const link = document.createElement("a");
       link.href = downloadUrl;
-      link.download = responseFilename || `${selectedCompanyCode}_${year}_credit_report.docx`;
+      link.download = documentResult.filename;
       link.click();
       URL.revokeObjectURL(downloadUrl);
-      const dashboardPath = response.headers.get("x-report-dashboard-path");
       stopProgressTimer();
-      if (dashboardPath) {
-        setReportDashboard(await fetchReportDashboard(dashboardPath));
+      if (documentResult.dashboardPath) {
+        setReportDashboard(await fetchReportDashboardByPath(documentResult.dashboardPath));
       } else {
         setReportDashboard(getFallbackCompletedDashboard(year));
       }
@@ -497,7 +422,9 @@ export default function ReportGeneratorPage() {
   }
 
   return (
-    <main className="h-full overflow-y-auto bg-slate-50">
+    <MembershipRouteGuard permission={MODULE_PERMISSIONS.reportGeneratorCreate}>
+      <MembershipSessionGuard>
+        <main className="h-full overflow-y-auto bg-slate-50">
       <div className="grid min-h-full gap-5 p-5 xl:grid-cols-[352px_minmax(0,1fr)]">
         <aside className="rounded-lg border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-6 py-5">
@@ -822,6 +749,8 @@ export default function ReportGeneratorPage() {
       <footer className="border-t border-slate-200 bg-white py-3 text-center text-sm text-slate-700">
         Copyright © AITC 慶燁科技 All Rights Reserved.
       </footer>
-    </main>
+        </main>
+      </MembershipSessionGuard>
+    </MembershipRouteGuard>
   );
 }

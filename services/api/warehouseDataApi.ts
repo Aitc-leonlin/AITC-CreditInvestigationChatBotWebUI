@@ -1,4 +1,4 @@
-import type { WarehouseDataEntry } from "@/data/warehouseData";
+import type { WarehouseDataEntry } from "@/types/warehouseData";
 import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
 
 export type WarehouseDataListResponse = {

@@ -51,8 +51,8 @@ import {
   getCompanyByLabel,
   getCompanyPromptValue,
 } from "@/data/companyKnowledge";
-import { fetchAppliedExpertKnowledgeEntries } from "@/data/expertKnowledgeApi";
-import { fetchAppliedWarehouseDataEntries } from "@/data/warehouseDataApi";
+import { fetchAppliedExpertKnowledgeEntries } from "@/services/api/expertKnowledgeApi";
+import { fetchAppliedWarehouseDataEntries } from "@/services/api/warehouseDataApi";
 import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
 
 const STORAGE_KEY = "aitc-chatbot-sessions-v1";

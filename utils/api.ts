@@ -31,14 +31,40 @@ export const BACKEND_API_PATHS = {
     "/api/expert-knowledge/generate-analysis",
   warehouseData: "/api/warehouse-data",
   warehouseDataApplied: "/api/warehouse-data/applied",
+  membershipAuth: "/api/membership/auth",
+  membershipMenus: "/api/membership/menus",
+  membershipRbac: "/api/membership/rbac",
+  membershipUsers: "/api/membership/users",
+  membershipOrganizations: "/api/membership/organizations",
+  membershipAdmin: "/api/membership/admin",
 } as const;
 
 export function buildBackendApiUrl(path: string) {
   return buildApiUrl(path, BACKEND_API_BASE_URL);
 }
 
+function getStoredMembershipAccessToken() {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem("membership.accessToken");
+}
+
+function withMembershipAuthHeader(init?: RequestInit): RequestInit | undefined {
+  const token = getStoredMembershipAccessToken();
+  if (!token) return init;
+
+  const headers = new Headers(init?.headers);
+  if (!headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+
+  return {
+    ...init,
+    headers,
+  };
+}
+
 export async function fetchBackendApi(path: string, init?: RequestInit) {
   const url = buildBackendApiUrl(path);
 
-  return fetch(url, init);
+  return fetch(url, withMembershipAuthHeader(init));
 }

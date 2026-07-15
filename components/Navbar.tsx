@@ -1,15 +1,26 @@
 "use client";
 
 import { cn } from "@/utils/cn";
-import { usePathname } from "next/navigation";
-import { ReactNode, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
 import HistoryEduIcon from "@mui/icons-material/HistoryEdu";
 import HomeIcon from "@mui/icons-material/Home";
 import PsychologyAltIcon from "@mui/icons-material/PsychologyAlt";
 import FunctionsIcon from "@mui/icons-material/Functions";
-import { Bot, Database, FileText } from "lucide-react";
+import {
+  Bot,
+  Database,
+  FileText,
+  LogOut,
+  Shield,
+  ShieldCheck,
+} from "lucide-react";
+import {
+  getMembershipAccessToken,
+  logoutMembership,
+} from "@/services/api/membershipAuthApi";
 import {
   METRIC_FORMULA_CATEGORIES,
   getMetricFormulaCategoryLabel,
@@ -24,6 +35,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "./ui/dialog";
+import { toast } from "sonner";
 
 export const ActiveLink = (props: {
   href: string;
@@ -92,6 +104,17 @@ function getTopBarTitleConfig(pathname: string) {
         "border-[#cfe4f2] bg-[#eef7fc]/90 text-[#12344a] shadow-[0_8px_24px_rgba(48,169,216,0.12)]",
       accentClassName: "bg-[#57A6D4]",
       labelClassName: "text-[#2d689d]",
+    };
+  }
+
+  if (pathname.startsWith("/membership")) {
+    return {
+      title: "會員權限管理",
+      icon: <ShieldCheck className="h-5 w-5" />,
+      className:
+        "border-indigo-200 bg-indigo-50/80 text-indigo-950 shadow-[0_8px_24px_rgba(79,70,229,0.10)]",
+      accentClassName: "bg-indigo-600",
+      labelClassName: "text-indigo-700",
     };
   }
 
@@ -282,65 +305,128 @@ function FormulaHelperDialog() {
   );
 }
 
+function MembershipDynamicNav() {
+  return (
+    <ActiveLink
+      href="/membership"
+      icon={<ShieldCheck className="h-[18px] w-[18px]" />}
+      activeClassName="cursor-default border-indigo-600 bg-indigo-600 text-white"
+    >
+      會員權限管理
+    </ActiveLink>
+  );
+}
+
+function LogoutButton() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const [hasToken, setHasToken] = useState(false);
+
+  useEffect(() => {
+    setHasToken(Boolean(getMembershipAccessToken()));
+  }, [pathname]);
+
+  async function handleLogout() {
+    try {
+      await logoutMembership();
+      toast.success("已登出");
+    } finally {
+      setHasToken(false);
+      router.replace("/login");
+    }
+  }
+
+  if (!hasToken) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={handleLogout}
+      className="ml-2 flex h-9 items-center gap-2 rounded-full border border-rose-200 bg-white px-3 text-sm font-medium text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-50"
+    >
+      <span>登出</span>
+      <LogOut className="h-4 w-4" />
+    </button>
+  );
+}
+
 export function Navbar() {
   const pathname = usePathname();
   const isReportGeneratorSection = pathname.startsWith("/report-generator");
+  const isMembershipSection = pathname.startsWith("/membership");
   const isChatbotSection =
     pathname.startsWith("/chatbot") ||
     pathname.startsWith("/expert-knowledge") ||
     pathname.startsWith("/external-knowledge");
+  const isAuthSection =
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/forgot-password") ||
+    pathname.startsWith("/reset-password") ||
+    pathname.startsWith("/verify-email");
+  const hasSectionNav =
+    isChatbotSection || isReportGeneratorSection || isMembershipSection;
 
-  if (pathname === "/") return null;
+  if (isAuthSection) return null;
+
+  if (pathname === "/") {
+    return <LogoutButton />;
+  }
 
   return (
     <nav className="flex min-w-0 items-center overflow-x-auto">
       <div className="mr-[15px]">
         <HomeNavButton />
       </div>
-      <div className="flex flex-nowrap items-center gap-2 rounded-full border border-[#d6e8f4] bg-[#f8fcff] p-1.5">
-        {isChatbotSection ? (
-          <>
-            <ActiveLink
-              href="/chatbot"
-              icon={<AutoAwesomeIcon sx={{ fontSize: 18 }} />}
-            >
-              授信AI助理
-            </ActiveLink>
-            <ActiveLink
-              href="/expert-knowledge"
-              icon={<PsychologyAltIcon sx={{ fontSize: 18 }} />}
-            >
-              專家知識庫
-            </ActiveLink>
-            <ActiveLink
-              href="/external-knowledge"
-              icon={<Database className="h-[18px] w-[18px]" />}
-            >
-              資料倉儲
-            </ActiveLink>
-            <FormulaHelperDialog />
-          </>
-        ) : null}
-        {isReportGeneratorSection ? (
-          <>
-            <ActiveLink
-              href="/report-generator"
-              icon={<FileText className="h-[18px] w-[18px]" />}
-              activeClassName="cursor-default border-[rgb(47_143_131)] bg-[rgb(47_143_131)] text-white"
-              exact
-            >
-              徵審報告產生器
-            </ActiveLink>
-            <ActiveLink
-              href="/report-generator/history"
-              icon={<HistoryEduIcon sx={{ fontSize: 18 }} />}
-              activeClassName="cursor-default border-[rgb(47_143_131)] bg-[rgb(47_143_131)] text-white"
-            >
-              歷史報告
-            </ActiveLink>
-          </>
-        ) : null}
-      </div>
+      {hasSectionNav ? (
+        <div className="flex flex-nowrap items-center gap-2 rounded-full border border-[#d6e8f4] bg-[#f8fcff] p-1.5">
+          {isChatbotSection ? (
+            <>
+              <ActiveLink
+                href="/chatbot"
+                icon={<AutoAwesomeIcon sx={{ fontSize: 18 }} />}
+              >
+                授信AI助理
+              </ActiveLink>
+              <ActiveLink
+                href="/expert-knowledge"
+                icon={<PsychologyAltIcon sx={{ fontSize: 18 }} />}
+              >
+                專家知識庫
+              </ActiveLink>
+              <ActiveLink
+                href="/external-knowledge"
+                icon={<Database className="h-[18px] w-[18px]" />}
+              >
+                資料倉儲
+              </ActiveLink>
+              <FormulaHelperDialog />
+            </>
+          ) : null}
+          {isReportGeneratorSection ? (
+            <>
+              <ActiveLink
+                href="/report-generator"
+                icon={<FileText className="h-[18px] w-[18px]" />}
+                activeClassName="cursor-default border-[rgb(47_143_131)] bg-[rgb(47_143_131)] text-white"
+                exact
+              >
+                徵審報告產生器
+              </ActiveLink>
+              <ActiveLink
+                href="/report-generator/history"
+                icon={<HistoryEduIcon sx={{ fontSize: 18 }} />}
+                activeClassName="cursor-default border-[rgb(47_143_131)] bg-[rgb(47_143_131)] text-white"
+              >
+                歷史報告
+              </ActiveLink>
+            </>
+          ) : null}
+          {isMembershipSection ? (
+            <MembershipDynamicNav />
+          ) : null}
+        </div>
+      ) : null}
+      <LogoutButton />
     </nav>
   );
 }

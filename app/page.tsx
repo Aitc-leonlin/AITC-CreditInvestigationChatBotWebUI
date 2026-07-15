@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Bot, FileText } from "lucide-react";
+import { ArrowRight, Bot, FileText, ShieldCheck } from "lucide-react";
 
 const entryCards = [
   {
@@ -16,6 +16,13 @@ const entryCards = [
     href: "/report-generator",
     icon: FileText,
     accentClassName: "bg-[#2F8F83] text-white",
+  },
+  {
+    title: "會員權限管理",
+    description: "管理企業會員帳號、角色權限、動態選單與後台授權入口。",
+    href: "/membership/dashboard",
+    icon: ShieldCheck,
+    accentClassName: "bg-indigo-600 text-white",
   },
 ];
 

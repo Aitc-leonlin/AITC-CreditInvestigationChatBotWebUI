@@ -1,7 +1,7 @@
 import {
   EXPERT_KNOWLEDGE_ALL_COMPANY_VALUE,
-  type ExpertKnowledgeEntry,
-} from "@/data/expertKnowledge";
+} from "@/data/expertKnowledgeOptions";
+import type { ExpertKnowledgeEntry } from "@/types/expertKnowledge";
 import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
 
 export type ExpertKnowledgeListResponse = {

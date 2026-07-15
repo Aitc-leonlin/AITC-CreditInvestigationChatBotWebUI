@@ -53,16 +53,18 @@ import {
 import {
   DEFAULT_WAREHOUSE_DATA_CATEGORY,
   WAREHOUSE_DATA_CATEGORIES,
-  type WarehouseDataCategory,
-  type WarehouseDataEntry,
-} from "@/data/warehouseData";
+} from "@/data/warehouseDataOptions";
+import type {
+  WarehouseDataCategory,
+  WarehouseDataEntry,
+} from "@/types/warehouseData";
 import {
   createWarehouseDataEntry,
   deleteWarehouseDataEntry,
   fetchWarehouseDataEntries,
   fetchWarehouseDataEntry,
   updateWarehouseDataEntry,
-} from "@/data/warehouseDataApi";
+} from "@/services/api/warehouseDataApi";
 import { cn } from "@/utils/cn";
 import { Button } from "@/components/ui/button";
 import {
@@ -75,6 +77,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MODULE_PERMISSIONS } from "@/data/modulePermissions";
+import { useMembershipPermissions } from "@/hooks/useMembershipPermissions";
 
 const REQUIRED_FIELD_ERROR_CLASS =
   "border-orange-500 ring-1 ring-orange-300 focus-visible:ring-orange-400";
@@ -169,6 +173,7 @@ function formatDateTime(value: string | null | undefined) {
 }
 
 export function WarehouseDataManager() {
+  const { hasPermission } = useMembershipPermissions();
   const [entries, setEntries] = useState<WarehouseDataEntry[]>([]);
   const [searchKeyword, setSearchKeyword] = useState("");
   const [debouncedSearchKeyword, setDebouncedSearchKeyword] = useState("");
@@ -200,6 +205,9 @@ export function WarehouseDataManager() {
     () => getCompaniesByIndustry(industry),
     [industry],
   );
+  const canAdd = hasPermission(MODULE_PERMISSIONS.creditAiWarehouseDataAdd);
+  const canEdit = hasPermission(MODULE_PERMISSIONS.creditAiWarehouseDataEdit);
+  const canDelete = hasPermission(MODULE_PERMISSIONS.creditAiWarehouseDataDelete);
 
   const columns: GridColDef<WarehouseDataEntry>[] = [
     {
@@ -351,15 +359,17 @@ export function WarehouseDataManager() {
             <Eye className="h-4 w-4" />
             查看內容
           </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => openEditModal(params.row)}
-          >
-            <Pencil className="h-4 w-4" />
-            編輯
-          </Button>
+          {canEdit ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => openEditModal(params.row)}
+            >
+              <Pencil className="h-4 w-4" />
+              編輯
+            </Button>
+          ) : null}
           {params.row.url ? (
             <Button type="button" variant="outline" size="sm" asChild>
               <a href={params.row.url} target="_blank" rel="noreferrer">
@@ -368,15 +378,17 @@ export function WarehouseDataManager() {
               </a>
             </Button>
           ) : null}
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`刪除 ${params.row.title}`}
-            onClick={() => handleDelete(params.row.id)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {canDelete ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`刪除 ${params.row.title}`}
+              onClick={() => handleDelete(params.row.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          ) : null}
         </div>
       ),
     },
@@ -674,14 +686,16 @@ export function WarehouseDataManager() {
                 />
               </div>
 
-              <Button
-                type="button"
-                onClick={openCreateModal}
-                className="bg-[#3BA9D8] text-white hover:bg-[#2f95c1]"
-              >
-                <Plus className="h-4 w-4" />
-                新增資料
-              </Button>
+              {canAdd ? (
+                <Button
+                  type="button"
+                  onClick={openCreateModal}
+                  className="bg-[#3BA9D8] text-white hover:bg-[#2f95c1]"
+                >
+                  <Plus className="h-4 w-4" />
+                  新增資料
+                </Button>
+              ) : null}
             </div>
           </div>
 

@@ -30,6 +30,8 @@ import { CalendarClock, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { MembershipRouteGuard } from "@/components/membership/authorization";
+import { useMembershipPermissions } from "@/hooks/useMembershipPermissions";
 import {
   Dialog,
   DialogContent,
@@ -40,12 +42,13 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   EXPERT_KNOWLEDGE_ALL_COMPANY_VALUE,
-  type ExpertKnowledgeEntry,
-} from "@/data/expertKnowledge";
+} from "@/data/expertKnowledgeOptions";
+import type { ExpertKnowledgeEntry } from "@/types/expertKnowledge";
 import {
   deleteExpertKnowledgeEntry,
   fetchExpertKnowledgeEntries,
-} from "@/data/expertKnowledgeApi";
+} from "@/services/api/expertKnowledgeApi";
+import { MODULE_PERMISSIONS } from "@/data/modulePermissions";
 
 const INDUSTRY_ICON_PROPS = { sx: { fontSize: 16, color: "#075985" } } as const;
 const TITLE_INDUSTRY_ICON_PROPS = { sx: { fontSize: 18, color: "#0f172a" } } as const;
@@ -106,6 +109,7 @@ function formatDateTime(value: string | null | undefined, fallback: string) {
 }
 
 export default function ExpertKnowledgePage() {
+  const { hasPermission } = useMembershipPermissions();
   const [entries, setEntries] = useState<ExpertKnowledgeEntry[]>([]);
   const [detailEntry, setDetailEntry] = useState<ExpertKnowledgeEntry | null>(null);
   const [searchKeyword, setSearchKeyword] = useState("");
@@ -116,6 +120,9 @@ export default function ExpertKnowledgePage() {
   });
   const [rowCount, setRowCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const canAdd = hasPermission(MODULE_PERMISSIONS.creditAiExpertKnowledgeAdd);
+  const canEdit = hasPermission(MODULE_PERMISSIONS.creditAiExpertKnowledgeEdit);
+  const canDelete = hasPermission(MODULE_PERMISSIONS.creditAiExpertKnowledgeDelete);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -305,28 +312,33 @@ export default function ExpertKnowledgePage() {
             <Eye className="h-4 w-4" />
             查看
           </Button>
-          <Button type="button" variant="outline" size="sm" asChild>
-            <Link href={`/expert-knowledge/${params.row.id}/edit`}>
-              <Pencil className="h-4 w-4" />
-              編輯
-            </Link>
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`刪除 ${params.row.title}`}
-            onClick={() => handleDelete(params.row.id)}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {canEdit ? (
+            <Button type="button" variant="outline" size="sm" asChild>
+              <Link href={`/expert-knowledge/${params.row.id}/edit`}>
+                <Pencil className="h-4 w-4" />
+                編輯
+              </Link>
+            </Button>
+          ) : null}
+          {canDelete ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={`刪除 ${params.row.title}`}
+              onClick={() => handleDelete(params.row.id)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          ) : null}
         </div>
       ),
     },
   ];
 
   return (
-    <div className="h-full overflow-y-auto">
+    <MembershipRouteGuard permission={MODULE_PERMISSIONS.creditAiExpertKnowledge}>
+      <div className="h-full overflow-y-auto">
       <div className="mx-auto flex w-full flex-col gap-6 px-4 py-6 md:px-6">
         <section className="overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -367,16 +379,18 @@ export default function ExpertKnowledgePage() {
                 />
               </div>
 
-              <Button
-                type="button"
-                asChild
-                className="bg-[#3BA9D8] text-white hover:bg-[#2f95c1]"
-              >
-                <Link href="/expert-knowledge/new">
-                  <Plus className="h-4 w-4" />
-                  新增專家指引
-                </Link>
-              </Button>
+              {canAdd ? (
+                <Button
+                  type="button"
+                  asChild
+                  className="bg-[#3BA9D8] text-white hover:bg-[#2f95c1]"
+                >
+                  <Link href="/expert-knowledge/new">
+                    <Plus className="h-4 w-4" />
+                    新增專家指引
+                  </Link>
+                </Button>
+              ) : null}
             </div>
           </div>
 
@@ -534,6 +548,7 @@ export default function ExpertKnowledgePage() {
           </DialogContent>
         </Dialog>
       </div>
-    </div>
+      </div>
+    </MembershipRouteGuard>
   );
 }

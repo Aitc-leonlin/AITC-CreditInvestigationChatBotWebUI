@@ -51,17 +51,17 @@ import {
   getCompanyPromptValue,
 } from "@/data/companyKnowledge";
 import {
-  type ExpertKnowledgeEntry,
-  buildExpertKnowledgeSourceSchemaKey,
   DEFAULT_EXPERT_KNOWLEDGE_DATA_SOURCE,
   EXPERT_KNOWLEDGE_ALL_COMPANY_VALUE,
   EXPERT_KNOWLEDGE_DATA_SOURCE_OPTIONS,
-} from "@/data/expertKnowledge";
+} from "@/data/expertKnowledgeOptions";
+import { buildExpertKnowledgeSourceSchemaKey } from "@/lib/expertKnowledge";
+import type { ExpertKnowledgeEntry } from "@/types/expertKnowledge";
 import {
   createExpertKnowledgeEntry,
   fetchExpertKnowledgeEntry,
   updateExpertKnowledgeEntry,
-} from "@/data/expertKnowledgeApi";
+} from "@/services/api/expertKnowledgeApi";
 import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
 
 const NO_COMPANY_VALUE = "__no_specific_company__";

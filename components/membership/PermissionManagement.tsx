@@ -1,0 +1,217 @@
+"use client";
+
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { DataGrid, type GridColDef } from "@mui/x-data-grid";
+import { FolderKey, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
+
+import { Button } from "@/components/ui/button";
+import {
+  fetchPermissionGroups,
+  fetchPermissions,
+  type Permission,
+  type PermissionGroup,
+} from "@/services/api/membershipRbacApi";
+import { MODULE_PERMISSIONS } from "@/data/modulePermissions";
+import { useMembershipPermissions } from "@/hooks/useMembershipPermissions";
+import { cn } from "@/utils/cn";
+
+export default function PermissionManagement() {
+  const { hasPermission, isLoading: isPermissionLoading } = useMembershipPermissions();
+  const canRead = hasPermission(MODULE_PERMISSIONS.rbacView);
+  const [groups, setGroups] = useState<PermissionGroup[]>([]);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string>("__all__");
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    void loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function loadData() {
+    try {
+      setIsLoading(true);
+      const [groupRows, permissionRows] = await Promise.all([
+        fetchPermissionGroups(),
+        fetchPermissions(),
+      ]);
+      setGroups(groupRows);
+      setPermissions(permissionRows);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "讀取權限資料失敗");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  const groupSummaries = useMemo(() => {
+    const knownGroupIds = new Set(groups.map((group) => group.id));
+    const permissionMap = new Map<string, Permission[]>();
+    permissions.forEach((permission) => {
+      const key = permission.groupId && knownGroupIds.has(permission.groupId)
+        ? permission.groupId
+        : "__ungrouped__";
+      permissionMap.set(key, [...(permissionMap.get(key) ?? []), permission]);
+    });
+
+    const groupedSections = groups.map((group) => ({
+      id: group.id,
+      code: group.code,
+      name: group.name,
+      description: group.description,
+      permissions: permissionMap.get(group.id) ?? [],
+    }));
+    const ungroupedPermissions = permissionMap.get("__ungrouped__") ?? [];
+    if (ungroupedPermissions.length === 0) return groupedSections;
+    return [
+      ...groupedSections,
+      {
+        id: "__ungrouped__",
+        code: "UNGROUPED",
+        name: "未分組權限",
+        description: "尚未指定權限群組的系統功能權限。",
+        permissions: ungroupedPermissions,
+      },
+    ];
+  }, [groups, permissions]);
+
+  const selectedGroup = useMemo(
+    () => groupSummaries.find((group) => group.id === selectedGroupId) ?? null,
+    [groupSummaries, selectedGroupId],
+  );
+
+  const selectedPermissions = useMemo(() => {
+    if (selectedGroupId === "__all__") return permissions;
+    return selectedGroup?.permissions ?? [];
+  }, [permissions, selectedGroup, selectedGroupId]);
+
+  const permissionColumns: GridColDef<Permission>[] = [
+      { field: "code", headerName: "權限代碼", minWidth: 190, flex: 0.8 },
+      { field: "name", headerName: "權限名稱", minWidth: 170, flex: 0.8 },
+      { field: "groupName", headerName: "群組", minWidth: 140, flex: 0.6 },
+      { field: "action", headerName: "Action", minWidth: 100 },
+  ];
+
+  if (isPermissionLoading) return null;
+
+  if (!canRead) {
+    return <AccessDenied title="權限管理" />;
+  }
+
+  return (
+    <main className="h-full overflow-hidden bg-[#f8fcff]">
+      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4 px-5 py-5 md:px-7">
+        <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-[#12344a]">權限管理</h1>
+            <p className="mt-1 text-sm text-[#5d7b90]">權限與權限群組由系統版本定義；點選群組可檢視對應權限。</p>
+          </div>
+          <Button variant="outline" onClick={() => void loadData()}>重新整理</Button>
+        </section>
+
+        <section className="grid min-h-0 gap-4 lg:grid-cols-[minmax(320px,420px)_minmax(0,1fr)]">
+          <Panel
+            title="權限群組"
+            icon={<FolderKey className="h-4 w-4 text-indigo-600" />}
+            action={<span className="text-xs text-slate-500">系統內建</span>}
+          >
+            <div className="h-full min-h-0 overflow-y-auto p-3">
+              <div className="grid gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedGroupId("__all__")}
+                  className={cn(
+                    "flex w-full items-start gap-3 rounded-md border px-3 py-3 text-left",
+                    selectedGroupId === "__all__"
+                      ? "border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200"
+                      : "border-slate-200 bg-white hover:bg-indigo-50",
+                  )}
+                >
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
+                  <span className="min-w-0 flex-1">
+                    <span className="font-semibold text-slate-900">全部權限</span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-500">顯示所有系統功能權限。</span>
+                  </span>
+                  <span className="shrink-0 rounded bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
+                    {permissions.length}
+                  </span>
+                </button>
+                {groupSummaries.map((section) => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => setSelectedGroupId(section.id)}
+                    className={cn(
+                      "flex w-full items-start gap-3 rounded-md border px-3 py-3 text-left",
+                      selectedGroupId === section.id
+                        ? "border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200"
+                        : "border-slate-200 bg-white hover:bg-indigo-50",
+                    )}
+                  >
+                    <FolderKey className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold text-slate-900">{section.name}</span>
+                        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{section.code}</span>
+                      </span>
+                      <span className="mt-1 block text-xs leading-5 text-slate-500">{section.description || "無描述"}</span>
+                    </span>
+                    <span className="shrink-0 rounded bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
+                      {section.permissions.length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </Panel>
+
+          <Panel
+            title={selectedGroup ? `${selectedGroup.name} 權限` : "全部權限"}
+            icon={<ShieldCheck className="h-4 w-4 text-indigo-600" />}
+            action={<span className="text-xs text-slate-500">{selectedPermissions.length} 筆</span>}
+          >
+            <DataGrid
+              rows={selectedPermissions}
+              columns={permissionColumns}
+              loading={isLoading}
+              disableRowSelectionOnClick
+              initialState={{
+                sorting: {
+                  sortModel: [{ field: "name", sort: "asc" }],
+                },
+              }}
+            />
+          </Panel>
+        </section>
+      </div>
+
+    </main>
+  );
+}
+
+function AccessDenied({ title }: { title: string }) {
+  return (
+    <main className="grid h-full place-items-center bg-[#f8fcff] p-6">
+      <section className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-900">
+        <div className="text-lg font-semibold">{title}</div>
+        <div className="mt-2 text-sm">目前帳號沒有 rbac.view 權限。</div>
+      </section>
+    </main>
+  );
+}
+
+function Panel({ title, icon, action, children }: { title: string; icon?: ReactNode; action?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] overflow-x-auto overflow-y-hidden rounded-lg border border-[#d6e8f4] bg-white">
+      <div className="flex items-center justify-between border-b border-[#d6e8f4] px-4 py-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-[#12344a]">
+          {icon}
+          {title}
+        </h2>
+        {action}
+      </div>
+      <div className="min-h-0">{children}</div>
+    </div>
+  );
+}
