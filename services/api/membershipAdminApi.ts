@@ -5,6 +5,7 @@ export type AuditLog = {
   id: string;
   actorUserId: string | null;
   actorDisplayName: string | null;
+  actorEmail: string | null;
   action: string;
   resourceType: string;
   resourceId: string;
@@ -21,6 +22,18 @@ export type AuditLogListResult = {
   page: number;
   pageSize: number;
   offset: number;
+};
+
+export type AuditRetentionSetting = {
+  retentionDays: number;
+  scheduleTimeZone: string;
+  lastRunAt: string | null;
+  lastArchiveAt: string | null;
+  lastArchivedCount: number;
+  lastCutoffAt: string | null;
+  lastArchiveFilename: string;
+  lastError: string;
+  updatedAt: string;
 };
 
 export type AdminDashboard = {
@@ -97,10 +110,23 @@ export async function fetchMembershipAdminDashboard() {
   return parseApiResponse<AdminDashboard>(response);
 }
 
+export async function resetMembershipSeedData() {
+  const response = await fetchBackendApi(adminPath("/reset-seed"), {
+    method: "POST",
+    headers: getMembershipAuthHeaders(),
+  });
+  return parseApiResponse<{
+    clearedTables: string[];
+    clearedTableCount: number;
+    seedCounts: Record<string, number>;
+  }>(response);
+}
+
 export async function fetchMembershipAuditLogs(params: {
   page: number;
   pageSize: number;
   action?: string;
+  actions?: string[];
   resourceType?: string;
   outcome?: string;
 }) {
@@ -109,6 +135,7 @@ export async function fetchMembershipAuditLogs(params: {
     pageSize: String(params.pageSize),
   });
   if (params.action) searchParams.set("action", params.action);
+  params.actions?.forEach((action) => searchParams.append("actions", action));
   if (params.resourceType) searchParams.set("resourceType", params.resourceType);
   if (params.outcome) searchParams.set("outcome", params.outcome);
 
@@ -117,6 +144,23 @@ export async function fetchMembershipAuditLogs(params: {
     cache: "no-store",
   });
   return parseApiResponse<AuditLogListResult>(response);
+}
+
+export async function fetchAuditRetentionSetting() {
+  const response = await fetchBackendApi(adminPath("/audit-retention"), {
+    headers: getMembershipAuthHeaders(),
+    cache: "no-store",
+  });
+  return parseApiResponse<AuditRetentionSetting>(response);
+}
+
+export async function updateAuditRetentionSetting(retentionDays: number) {
+  const response = await fetchBackendApi(adminPath("/audit-retention"), {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...getMembershipAuthHeaders() },
+    body: JSON.stringify({ retentionDays }),
+  });
+  return parseApiResponse<AuditRetentionSetting>(response);
 }
 
 export async function fetchNotificationTemplates() {

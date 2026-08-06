@@ -27,7 +27,6 @@ import { MODULE_PERMISSIONS } from "@/data/modulePermissions";
 import { useMembershipPermissions } from "@/hooks/useMembershipPermissions";
 
 const EMPTY_ROLE: RolePayload = {
-  code: "",
   name: "",
   description: "",
   roleType: "BUSINESS",
@@ -81,8 +80,9 @@ export default function RoleManagement() {
     }
     setSelectedRole(null);
     setRoleForm(EMPTY_ROLE);
-    setSelectedPermissionIds(new Set());
-    setExpandedPermissionSectionIds(getInitialExpandedSectionIds([]));
+    const allPermissionIds = permissions.map((permission) => permission.id);
+    setSelectedPermissionIds(new Set(allPermissionIds));
+    setExpandedPermissionSectionIds(getInitialExpandedSectionIds(allPermissionIds));
     setDialogOpen(true);
   }
 
@@ -94,7 +94,6 @@ export default function RoleManagement() {
     try {
       setSelectedRole(role);
       setRoleForm({
-        code: role.code,
         name: role.name,
         description: role.description,
         roleType: role.roleType,
@@ -217,14 +216,16 @@ export default function RoleManagement() {
     setSelectedPermissionIds(new Set(permissions.map((permission) => permission.id)));
   }
 
-  function invertAllPermissions() {
-    setSelectedPermissionIds((current) => {
-      const next = new Set<string>();
-      permissions.forEach((permission) => {
-        if (!current.has(permission.id)) next.add(permission.id);
-      });
-      return next;
-    });
+  function clearAllPermissions() {
+    setSelectedPermissionIds(new Set());
+  }
+
+  function expandAllPermissionSections() {
+    setExpandedPermissionSectionIds(new Set(permissionSections.map((section) => section.id)));
+  }
+
+  function collapseAllPermissionSections() {
+    setExpandedPermissionSectionIds(new Set());
   }
 
   function getInitialExpandedSectionIds(permissionIds: string[]) {
@@ -247,8 +248,8 @@ export default function RoleManagement() {
   }
 
   const columns: GridColDef<Role>[] = [
-      { field: "code", headerName: "角色代碼", minWidth: 170, flex: 0.7 },
       { field: "name", headerName: "角色名稱", minWidth: 170, flex: 0.8 },
+      { field: "code", headerName: "Code", minWidth: 220, flex: 0.9 },
       { field: "description", headerName: "描述", minWidth: 220, flex: 1 },
       {
         field: "status",
@@ -311,39 +312,48 @@ export default function RoleManagement() {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-h-[88vh] max-w-5xl overflow-y-auto">
-          <DialogHeader><DialogTitle>{selectedRole ? "修改角色" : "新增角色"}</DialogTitle></DialogHeader>
-          <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
-            <Field label="角色代碼"><Input value={roleForm.code} onChange={(event) => setRoleForm({ ...roleForm, code: event.target.value })} required /></Field>
-            <Field label="角色名稱"><Input value={roleForm.name} onChange={(event) => setRoleForm({ ...roleForm, name: event.target.value })} required /></Field>
-            <Field label="角色類型">
-              <select className="h-9 rounded-md border px-3 text-sm" value={roleForm.roleType} onChange={(event) => setRoleForm({ ...roleForm, roleType: event.target.value as RolePayload["roleType"] })}>
-                <option value="BUSINESS">BUSINESS</option>
-                <option value="SYSTEM">SYSTEM</option>
-              </select>
-            </Field>
-            <Field label="狀態">
-              <select className="h-9 rounded-md border px-3 text-sm" value={roleForm.status} onChange={(event) => setRoleForm({ ...roleForm, status: event.target.value as RolePayload["status"] })}>
-                <option value="ACTIVE">啟用</option>
-                <option value="INACTIVE">停用</option>
-              </select>
-            </Field>
-            <label className="grid gap-1.5 text-sm font-medium text-slate-700 md:col-span-2">
-              描述
-              <textarea className="min-h-20 rounded-md border px-3 py-2 text-sm" value={roleForm.description} onChange={(event) => setRoleForm({ ...roleForm, description: event.target.value })} />
-            </label>
-            <section className="grid gap-3 md:col-span-2">
+        <DialogContent className="flex max-h-[88vh] max-w-5xl flex-col overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b px-6 py-5">
+            <DialogTitle>{selectedRole ? "修改角色" : "新增角色"}</DialogTitle>
+          </DialogHeader>
+          <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
+            <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto px-6 py-5 md:grid-cols-2">
+              <Field label="角色名稱"><Input value={roleForm.name} onChange={(event) => setRoleForm({ ...roleForm, name: event.target.value })} required /></Field>
+              <Field label="角色類型">
+                <select className="h-9 rounded-md border px-3 text-sm" value={roleForm.roleType} onChange={(event) => setRoleForm({ ...roleForm, roleType: event.target.value as RolePayload["roleType"] })}>
+                  <option value="BUSINESS">BUSINESS</option>
+                  <option value="USER">USER</option>
+                  <option value="SYSTEM">SYSTEM</option>
+                </select>
+              </Field>
+              <Field label="狀態">
+                <select className="h-9 rounded-md border px-3 text-sm" value={roleForm.status} onChange={(event) => setRoleForm({ ...roleForm, status: event.target.value as RolePayload["status"] })}>
+                  <option value="ACTIVE">啟用</option>
+                  <option value="INACTIVE">停用</option>
+                </select>
+              </Field>
+              <label className="grid gap-1.5 text-sm font-medium text-slate-700 md:col-span-2">
+                描述
+                <textarea className="min-h-20 rounded-md border px-3 py-2 text-sm" value={roleForm.description} onChange={(event) => setRoleForm({ ...roleForm, description: event.target.value })} />
+              </label>
+              <section className="grid gap-3 md:col-span-2">
               <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h3 className="text-sm font-semibold text-slate-900">角色權限</h3>
                   <p className="mt-1 text-xs text-slate-500">新增角色時可直接勾選此角色可使用的權限功能。</p>
                 </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <Button type="button" variant="outline" size="sm" onClick={selectAllPermissions}>
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={selectAllPermissions} className="border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100">
                     全選
                   </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={invertAllPermissions}>
+                  <Button type="button" variant="outline" size="sm" onClick={clearAllPermissions} className="border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100">
                     全取消
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={collapseAllPermissionSections} className="border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100">
+                    全折疊
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={expandAllPermissionSections} className="border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100">
+                    全展開
                   </Button>
                 </div>
               </div>
@@ -413,8 +423,9 @@ export default function RoleManagement() {
                   </section>
                 );
               })}
-            </section>
-            <div className="flex justify-end gap-2 border-t pt-4 md:col-span-2">
+              </section>
+            </div>
+            <div className="sticky bottom-0 z-10 flex shrink-0 justify-end gap-2 border-t bg-white px-6 py-4 shadow-[0_-8px_20px_rgba(15,23,42,0.06)]">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>取消</Button>
               <Button type="submit" className="bg-indigo-600 text-white hover:bg-indigo-700">儲存</Button>
             </div>

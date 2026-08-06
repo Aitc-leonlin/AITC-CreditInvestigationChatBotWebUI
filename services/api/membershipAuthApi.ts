@@ -34,7 +34,6 @@ type ApiResponse<T> = {
 const ACCESS_TOKEN_KEY = "membership.accessToken";
 const REFRESH_TOKEN_KEY = "membership.refreshToken";
 const AUTH_USER_KEY = "membership.user";
-const REMEMBER_ME_KEY = "membership.rememberMe";
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -74,11 +73,10 @@ export function getStoredAuthUser(): AuthUser | null {
   }
 }
 
-export function storeAuthTokens(result: AuthTokenResult, rememberMe: boolean) {
+export function storeAuthTokens(result: AuthTokenResult) {
   window.localStorage.setItem(ACCESS_TOKEN_KEY, result.accessToken);
   window.localStorage.setItem(REFRESH_TOKEN_KEY, result.refreshToken);
   window.localStorage.setItem(AUTH_USER_KEY, JSON.stringify(result.user));
-  window.localStorage.setItem(REMEMBER_ME_KEY, rememberMe ? "true" : "false");
 }
 
 export function clearAuthTokens() {
@@ -86,7 +84,6 @@ export function clearAuthTokens() {
   window.localStorage.removeItem(ACCESS_TOKEN_KEY);
   window.localStorage.removeItem(REFRESH_TOKEN_KEY);
   window.localStorage.removeItem(AUTH_USER_KEY);
-  window.localStorage.removeItem(REMEMBER_ME_KEY);
 }
 
 export async function loginMembership(payload: {
@@ -100,7 +97,7 @@ export async function loginMembership(payload: {
     body: JSON.stringify(payload),
   });
   const result = await parseApiResponse<AuthTokenResult>(response);
-  storeAuthTokens(result, payload.rememberMe);
+  storeAuthTokens(result);
   return result;
 }
 
@@ -113,7 +110,7 @@ export async function refreshMembershipToken() {
     body: JSON.stringify({ refreshToken }),
   });
   const result = await parseApiResponse<AuthTokenResult>(response);
-  storeAuthTokens(result, window.localStorage.getItem(REMEMBER_ME_KEY) === "true");
+  storeAuthTokens(result);
   return result;
 }
 

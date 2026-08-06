@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   Bell,
   Building2,
   FileSearch,
   KeyRound,
-  PanelLeft,
   ShieldCheck,
   UserCog,
   Users,
@@ -17,6 +17,7 @@ import { WidgetPermission } from "@/components/membership/authorization";
 import {
   type AdminDashboard,
   fetchMembershipAdminDashboard,
+  resetMembershipSeedData,
 } from "@/services/api/membershipAdminApi";
 import { MODULE_PERMISSIONS } from "@/data/modulePermissions";
 
@@ -36,25 +37,18 @@ const widgets = [
     icon: KeyRound,
   },
   {
+    title: "批次套用角色",
+    description: "替帳號配置一個或多個角色。",
+    href: "/membership/user-roles",
+    permission: MODULE_PERMISSIONS.membershipUserRoles,
+    icon: UserCog,
+  },
+  {
     title: "功能權限管理",
     description: "Permission、Permission Group 與 resource/action 定義。",
     href: "/membership/permissions",
     permission: MODULE_PERMISSIONS.rbacView,
     icon: ShieldCheck,
-  },
-  {
-    title: "使用者角色",
-    description: "替使用者配置一個或多個角色。",
-    href: "/membership/user-roles",
-    permission: MODULE_PERMISSIONS.rbacView,
-    icon: UserCog,
-  },
-  {
-    title: "選單管理",
-    description: "維護動態選單、route、icon 與 role menu mapping。",
-    href: "/membership/menus",
-    permission: "menu.read",
-    icon: PanelLeft,
   },
   {
     title: "組織資料權限",
@@ -67,14 +61,14 @@ const widgets = [
     title: "日誌安全",
     description: "Audit log 查詢、登入統計與操作紀錄追蹤。",
     href: "/membership/audit",
-    permission: "audit.read",
+    permission: MODULE_PERMISSIONS.auditView,
     icon: FileSearch,
   },
   {
     title: "通知管理",
     description: "Email 通知範本、通知 outbox 與發送狀態管理。",
     href: "/membership/notifications",
-    permission: "notification.manage",
+    permission: MODULE_PERMISSIONS.notificationView,
     icon: Bell,
   },
 ];
@@ -86,28 +80,64 @@ function metricValue(value: unknown) {
 export default function MembershipDashboard() {
   const [dashboard, setDashboard] = useState<AdminDashboard | null>(null);
   const [error, setError] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [isResetting, setIsResetting] = useState(false);
+
+  async function loadDashboard() {
+    setIsLoading(true);
+    try {
+      const result = await fetchMembershipAdminDashboard();
+      setDashboard(result);
+      setError("");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "管理總覽載入失敗");
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   useEffect(() => {
     let ignore = false;
-    setIsLoading(true);
-    fetchMembershipAdminDashboard()
-      .then((result) => {
+    async function load() {
+      setIsLoading(true);
+      try {
+        const result = await fetchMembershipAdminDashboard();
         if (!ignore) {
           setDashboard(result);
           setError("");
         }
-      })
-      .catch((err: unknown) => {
+      } catch (err: unknown) {
         if (!ignore) setError(err instanceof Error ? err.message : "管理總覽載入失敗");
-      })
-      .finally(() => {
+      } finally {
         if (!ignore) setIsLoading(false);
-      });
+      }
+    }
+    void load();
     return () => {
       ignore = true;
     };
   }, []);
+
+  async function handleResetSeed() {
+    const confirmed = window.confirm(
+      "警告：這會清空目前所有 MEMBERSHIP_ 開頭資料表的資料，並用 SEED 重新建立預設資料。此操作會移除現有會員、角色、授權、登入紀錄與通知資料。確定要執行嗎？",
+    );
+    if (!confirmed) return;
+
+    setIsResetting(true);
+    setError("");
+    setResetMessage("");
+    try {
+      const result = await resetMembershipSeedData();
+      setResetMessage(`已清空 ${result.clearedTableCount} 張 membership table，並重新寫入 SEED 資料。`);
+      await loadDashboard();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "SEED 重建失敗");
+    } finally {
+      setIsResetting(false);
+    }
+  }
 
   const metrics = useMemo(
     () => [
@@ -126,12 +156,25 @@ export default function MembershipDashboard() {
   return (
     <main className="h-full overflow-y-auto bg-[#f8fcff]">
       <div className="mx-auto max-w-6xl px-5 py-6 md:px-8">
-        <section className="mb-5">
-          <div className="text-xs font-semibold uppercase text-indigo-600">Dashboard</div>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-950">會員權限管理總覽</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-600">
-            權限總覽、使用者統計、登入統計、通知狀態與近期 Audit Log。
-          </p>
+        <section className="mb-5 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase text-indigo-600">Dashboard</div>
+            <h1 className="mt-1 text-2xl font-semibold text-slate-950">會員權限管理總覽</h1>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              權限總覽、使用者統計、登入統計、通知狀態與近期 Audit Log。
+            </p>
+          </div>
+          <WidgetPermission permission={MODULE_PERMISSIONS.rbacDelete}>
+            <button
+              type="button"
+              onClick={handleResetSeed}
+              disabled={isResetting}
+              className="inline-flex items-center justify-center gap-2 rounded-md border border-rose-700 bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <AlertTriangle className="h-4 w-4" />
+              {isResetting ? "重建中..." : "清空 MEMBERSHIP 並重建 SEED"}
+            </button>
+          </WidgetPermission>
         </section>
 
         <section className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -148,6 +191,12 @@ export default function MembershipDashboard() {
         {error ? (
           <div className="mb-5 rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {error}
+          </div>
+        ) : null}
+
+        {resetMessage ? (
+          <div className="mb-5 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {resetMessage}
           </div>
         ) : null}
 
@@ -172,8 +221,12 @@ export default function MembershipDashboard() {
                 {(dashboard?.recentAuditLogs ?? []).map((log) => (
                   <tr key={log.id}>
                     <td className="whitespace-nowrap px-4 py-3 text-slate-600">{log.createdAt}</td>
-                    <td className="px-4 py-3 font-medium text-slate-900">{log.action}</td>
-                    <td className="px-4 py-3 text-slate-600">{log.resourceType}</td>
+                    <td className="px-4 py-3 font-medium text-slate-900">
+                      {typeof log.metadata.actionLabel === "string" ? log.metadata.actionLabel : log.action}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {typeof log.metadata.module === "string" ? log.metadata.module : log.resourceType}
+                    </td>
                     <td className="px-4 py-3 text-slate-600">{log.outcome}</td>
                   </tr>
                 ))}

@@ -23,7 +23,7 @@ export function MembershipAccessDenied({
         <h1 className="mt-4 text-xl font-semibold text-slate-950">{title}</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600">{message}</p>
         <Button asChild className="mt-5 bg-indigo-600 text-white hover:bg-indigo-700">
-          <Link href="/membership/dashboard">回管理總覽</Link>
+          <Link href="/">回首頁</Link>
         </Button>
       </section>
     </main>

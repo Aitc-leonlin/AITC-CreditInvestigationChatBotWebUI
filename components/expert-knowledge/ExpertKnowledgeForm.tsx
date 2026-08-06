@@ -168,6 +168,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string; readOnly?: boolea
     useState("");
   const [isSystemPromptGenerating, setIsSystemPromptGenerating] =
     useState(false);
+  const [hasAiGeneratedContent, setHasAiGeneratedContent] = useState(false);
   const [showValidationErrors, setShowValidationErrors] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const readOnly = props.readOnly ?? false;
@@ -360,9 +361,13 @@ export function ExpertKnowledgeForm(props: { entryId?: string; readOnly?: boolea
     try {
       setIsSaving(true);
       if (selectedEntry) {
-        await updateExpertKnowledgeEntry(selectedEntry.id, nextEntry);
+        await updateExpertKnowledgeEntry(selectedEntry.id, nextEntry, {
+          aiGenerated: hasAiGeneratedContent,
+        });
       } else {
-        await createExpertKnowledgeEntry(nextEntry);
+        await createExpertKnowledgeEntry(nextEntry, {
+          aiGenerated: hasAiGeneratedContent,
+        });
       }
       setShowValidationErrors(false);
       toast.success(selectedEntry ? "已更新專家指引" : "已新增專家指引");
@@ -422,6 +427,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string; readOnly?: boolea
       }
 
       setAnchorDescription(json.response.trim());
+      setHasAiGeneratedContent(true);
       toast.success("已產生錨定點內容");
       setIsGenerateModalOpen(false);
     } catch (error) {
@@ -468,6 +474,7 @@ export function ExpertKnowledgeForm(props: { entryId?: string; readOnly?: boolea
       }
 
       setSystemPrompt(json.response.trim());
+      setHasAiGeneratedContent(true);
       toast.success("已產生專家指引");
       setIsSystemPromptGenerateModalOpen(false);
     } catch (error) {

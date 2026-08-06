@@ -45,9 +45,9 @@ export default function VerifyEmailPage() {
         <form className="grid gap-4" onSubmit={handleSubmit}>
           <label className="grid gap-1.5 text-sm font-medium text-slate-700">
             Verification Token
-            <Input value={token} onChange={(event) => setToken(event.target.value)} required />
+            <Input id="email-verification-token-input" value={token} onChange={(event) => setToken(event.target.value)} required />
           </label>
-          <Button type="submit" disabled={isSubmitting} className="bg-[#235c7c] text-white hover:bg-[#16445f]">
+          <Button id="email-verification-submit-button" type="submit" disabled={isSubmitting} className="bg-[#235c7c] text-white hover:bg-[#16445f]">
             驗證 Email
           </Button>
         </form>

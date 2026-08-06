@@ -11,6 +11,10 @@ export type MembershipUser = {
   employeeNo: string;
   organizationId: string | null;
   organizationName: string | null;
+  departmentId: string | null;
+  departmentName: string | null;
+  managerUserId: string | null;
+  managerDisplayName: string | null;
   status: MembershipUserStatus;
   locale: string;
   timezone: string;
@@ -37,14 +41,18 @@ export type MembershipUserPayload = {
   displayName: string;
   employeeNo: string;
   organizationId: string | null;
+  departmentId?: string | null;
+  managerUserId?: string | null;
   status: MembershipUserStatus;
   locale: string;
   timezone: string;
+  roleIds?: string[];
 };
 
 export type MembershipUserCreatePayload = MembershipUserPayload & {
   password: string;
   mustChangePassword: boolean;
+  roleIds: string[];
 };
 
 export type MembershipProfilePayload = {

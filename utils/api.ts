@@ -17,6 +17,7 @@ export const BACKEND_API_BASE_URL =
 export const BACKEND_API_PATHS = {
   chat: "/api/chatbot",
   chatWithExternal: "/api/chatbot-with-external",
+  chatConversations: "/api/chat/conversations",
   chatAgents: "/api/chat/agents",
   chatRetrieval: "/api/chat/retrieval",
   chatRetrievalAgents: "/api/chat/retrieval-agents",

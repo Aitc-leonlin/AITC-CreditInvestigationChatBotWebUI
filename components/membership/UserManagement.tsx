@@ -57,6 +57,8 @@ import {
   type MembershipUserPayload,
   type MembershipUserStatus,
 } from "@/services/api/membershipUsersApi";
+import { fetchRoles, fetchUserRoleIds, type Role } from "@/services/api/membershipRbacApi";
+import { fetchOrganizationUnits, type OrganizationUnit } from "@/services/api/membershipOrganizationApi";
 
 type UserDialogMode = "create" | "edit" | "profile" | "changePassword" | "resetPassword";
 
@@ -66,6 +68,8 @@ type UserFormState = {
   displayName: string;
   employeeNo: string;
   organizationId: string;
+  departmentId: string;
+  managerUserId: string;
   status: MembershipUserStatus;
   locale: string;
   timezone: string;
@@ -73,6 +77,7 @@ type UserFormState = {
   currentPassword: string;
   newPassword: string;
   mustChangePassword: boolean;
+  roleIds: string[];
 };
 
 const DEFAULT_FORM_STATE: UserFormState = {
@@ -80,7 +85,9 @@ const DEFAULT_FORM_STATE: UserFormState = {
   email: "",
   displayName: "",
   employeeNo: "",
-  organizationId: "org-root",
+  organizationId: "",
+  departmentId: "",
+  managerUserId: "",
   status: "ACTIVE",
   locale: "zh-TW",
   timezone: "Asia/Taipei",
@@ -88,6 +95,7 @@ const DEFAULT_FORM_STATE: UserFormState = {
   currentPassword: "",
   newPassword: "",
   mustChangePassword: true,
+  roleIds: ["role-default-user"],
 };
 
 function formatDateTime(value: string | null | undefined) {
@@ -104,7 +112,9 @@ function userToFormState(user: MembershipUser): UserFormState {
     email: user.email,
     displayName: user.displayName,
     employeeNo: user.employeeNo,
-    organizationId: user.organizationId ?? "org-root",
+    organizationId: user.organizationId ?? "",
+    departmentId: user.departmentId ?? "",
+    managerUserId: user.managerUserId ?? "",
     status: user.status,
     locale: user.locale,
     timezone: user.timezone,
@@ -118,7 +128,9 @@ function toUserPayload(form: UserFormState): MembershipUserPayload {
     email: form.email,
     displayName: form.displayName,
     employeeNo: form.employeeNo,
-    organizationId: form.organizationId || null,
+    organizationId: form.departmentId || form.organizationId || null,
+    departmentId: form.departmentId || null,
+    managerUserId: form.managerUserId || null,
     status: form.status,
     locale: form.locale,
     timezone: form.timezone,
@@ -128,6 +140,9 @@ function toUserPayload(form: UserFormState): MembershipUserPayload {
 export default function UserManagement() {
   const router = useRouter();
   const [users, setUsers] = useState<MembershipUser[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [departments, setDepartments] = useState<OrganizationUnit[]>([]);
+  const [managerUsers, setManagerUsers] = useState<MembershipUser[]>([]);
   const { hasPermission } = useMembershipPermissions();
   const canWriteUsers = hasPermission("membership.write");
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -178,15 +193,39 @@ export default function UserManagement() {
     void loadUsers();
   }, [loadUsers]);
 
+  useEffect(() => {
+    if (!canWriteUsers) return;
+    Promise.all([
+      fetchRoles({ status: "ACTIVE" }),
+      fetchOrganizationUnits({ status: "ACTIVE" }),
+      fetchMembershipUsers({ page: 1, pageSize: 200, status: "ACTIVE" }),
+    ])
+      .then(([roleRows, organizationRows, userRows]) => {
+        setRoles(roleRows);
+        setDepartments(organizationRows.filter((unit) => unit.unitType === "DEPARTMENT" || unit.unitType === "TEAM"));
+        setManagerUsers(userRows.users);
+      })
+      .catch((error) => toast.error(error instanceof Error ? error.message : "讀取表單選項失敗"));
+  }, [canWriteUsers]);
+
   function openCreateDialog() {
     setSelectedUser(null);
     setForm(DEFAULT_FORM_STATE);
     setDialogMode("create");
   }
 
-  function openUserDialog(mode: UserDialogMode, user: MembershipUser) {
+  async function openUserDialog(mode: UserDialogMode, user: MembershipUser) {
     setSelectedUser(user);
-    setForm(userToFormState(user));
+    const nextForm = userToFormState(user);
+    if (mode === "edit") {
+      try {
+        const result = await fetchUserRoleIds(user.id);
+        nextForm.roleIds = result.roleIds.length > 0 ? result.roleIds : ["role-default-user"];
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "讀取使用者角色失敗");
+      }
+    }
+    setForm(nextForm);
     setDialogMode(mode);
   }
 
@@ -205,11 +244,15 @@ export default function UserManagement() {
           ...toUserPayload(form),
           password: form.password,
           mustChangePassword: form.mustChangePassword,
+          roleIds: form.roleIds.length > 0 ? form.roleIds : ["role-default-user"],
         };
         await createMembershipUser(payload);
         toast.success("已新增使用者");
       } else if (dialogMode === "edit" && selectedUser) {
-        await updateMembershipUser(selectedUser.id, toUserPayload(form));
+        await updateMembershipUser(selectedUser.id, {
+          ...toUserPayload(form),
+          roleIds: form.roleIds.length > 0 ? form.roleIds : ["role-default-user"],
+        });
         toast.success("已更新使用者");
       } else if (dialogMode === "profile" && selectedUser) {
         await updateMembershipUserProfile(selectedUser.id, {
@@ -294,10 +337,10 @@ export default function UserManagement() {
       },
       {
         field: "organizationName",
-        headerName: "組織",
+        headerName: "部門",
         minWidth: 150,
         flex: 0.7,
-        valueGetter: (_, row) => row.organizationName || row.organizationId || "-",
+        valueGetter: (_, row) => row.departmentName || row.departmentId || row.organizationName || row.organizationId || "-",
       },
       {
         field: "status",
@@ -347,23 +390,23 @@ export default function UserManagement() {
       {
         field: "actions",
         headerName: "操作",
-        minWidth: 360,
+        minWidth: 300,
         sortable: false,
         filterable: false,
         renderCell: (params: GridRenderCellParams<MembershipUser>) => (
           <div className="flex h-full items-center gap-1.5">
             {canWriteUsers ? (
               <>
-                <IconAction title="編輯" onClick={() => openUserDialog("edit", params.row)}>
+                <IconAction title="編輯" onClick={() => void openUserDialog("edit", params.row)}>
                   <Pencil className="h-4 w-4" />
                 </IconAction>
-                <IconAction title="個人資料" onClick={() => openUserDialog("profile", params.row)}>
+                <IconAction title="個人資料" onClick={() => void openUserDialog("profile", params.row)}>
                   <UserCog className="h-4 w-4" />
                 </IconAction>
-                <IconAction title="修改密碼" onClick={() => openUserDialog("changePassword", params.row)}>
+                <IconAction title="修改密碼" onClick={() => void openUserDialog("changePassword", params.row)}>
                   <KeyRound className="h-4 w-4" />
                 </IconAction>
-                <IconAction title="管理員重設密碼" onClick={() => openUserDialog("resetPassword", params.row)}>
+                <IconAction title="管理員重設密碼" onClick={() => void openUserDialog("resetPassword", params.row)}>
                   <RefreshCw className="h-4 w-4" />
                 </IconAction>
               </>
@@ -428,7 +471,7 @@ export default function UserManagement() {
               {canWriteUsers ? (
                 <Button onClick={openCreateDialog} className="bg-[#235c7c] text-white hover:bg-[#16445f]">
                   <Plus className="h-4 w-4" />
-                  新增使用者
+                  新增會員帳號
                 </Button>
               ) : null}
             </div>
@@ -463,32 +506,39 @@ export default function UserManagement() {
       </div>
 
       <Dialog open={dialogMode !== null} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent className="max-h-[88vh] max-w-3xl overflow-y-auto border-[#d6e8f4] bg-white">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[88vh] max-w-3xl flex-col overflow-hidden border-[#d6e8f4] bg-white p-0">
+          <DialogHeader className="shrink-0 border-b border-[#e5eef5] px-6 py-5">
             <DialogTitle>{dialogTitle(dialogMode)}</DialogTitle>
             <DialogDescription>
               {dialogDescription(dialogMode)}
             </DialogDescription>
           </DialogHeader>
-          <form className="grid gap-4" onSubmit={handleSubmit}>
-            {dialogMode === "create" || dialogMode === "edit" ? (
-              <UserFields
-                form={form}
-                setForm={setForm}
-                includePassword={dialogMode === "create"}
-              />
-            ) : null}
-            {dialogMode === "profile" ? (
-              <ProfileFields form={form} setForm={setForm} />
-            ) : null}
-            {dialogMode === "changePassword" ? (
-              <PasswordFields form={form} setForm={setForm} includeCurrentPassword />
-            ) : null}
-            {dialogMode === "resetPassword" ? (
-              <PasswordFields form={form} setForm={setForm} includeMustChange />
-            ) : null}
+          <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              {dialogMode === "create" || dialogMode === "edit" ? (
+                <UserFields
+                  form={form}
+                  setForm={setForm}
+                  includePassword={dialogMode === "create"}
+                  roles={roles}
+                  departments={departments}
+                  managerUsers={managerUsers}
+                  selectedUserId={selectedUser?.id ?? null}
+                  includeRoles={dialogMode === "create" || dialogMode === "edit"}
+                />
+              ) : null}
+              {dialogMode === "profile" ? (
+                <ProfileFields form={form} setForm={setForm} />
+              ) : null}
+              {dialogMode === "changePassword" ? (
+                <PasswordFields form={form} setForm={setForm} includeCurrentPassword />
+              ) : null}
+              {dialogMode === "resetPassword" ? (
+                <PasswordFields form={form} setForm={setForm} includeMustChange />
+              ) : null}
+            </div>
 
-            <div className="flex justify-end gap-2 border-t border-[#e5eef5] pt-4">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-[#e5eef5] bg-white px-6 py-4 shadow-[0_-8px_20px_rgba(15,23,42,0.04)]">
               <Button type="button" variant="outline" onClick={closeDialog}>
                 取消
               </Button>
@@ -536,11 +586,45 @@ function UserFields({
   form,
   setForm,
   includePassword,
+  roles,
+  departments,
+  managerUsers,
+  selectedUserId,
+  includeRoles,
 }: {
   form: UserFormState;
   setForm: React.Dispatch<React.SetStateAction<UserFormState>>;
   includePassword: boolean;
+  roles: Role[];
+  departments: OrganizationUnit[];
+  managerUsers: MembershipUser[];
+  selectedUserId: string | null;
+  includeRoles: boolean;
 }) {
+  const selectedDepartment = departments.find((department) => department.id === form.departmentId) ?? null;
+  const managerOptions = managerUsers.filter((user) => {
+    if (user.id === selectedUserId) return false;
+    if (!form.departmentId) return true;
+    return (
+      user.departmentId === form.departmentId
+      || user.organizationId === form.departmentId
+      || user.id === selectedDepartment?.managerUserId
+    );
+  });
+
+  function handleDepartmentChange(departmentId: string) {
+    setForm((current) => ({
+      ...current,
+      departmentId,
+      organizationId: departmentId,
+      managerUserId: managerUsers.some((user) => (
+        user.id === current.managerUserId
+        && user.id !== selectedUserId
+        && (!departmentId || user.departmentId === departmentId || user.organizationId === departmentId)
+      )) ? current.managerUserId : "",
+    }));
+  }
+
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Field label="帳號">
@@ -555,8 +639,33 @@ function UserFields({
       <Field label="員工編號">
         <Input value={form.employeeNo} onChange={(event) => setFormValue(setForm, "employeeNo", event.target.value)} />
       </Field>
-      <Field label="組織 ID">
-        <Input value={form.organizationId} onChange={(event) => setFormValue(setForm, "organizationId", event.target.value)} />
+      <Field label="使用者部門" hint="設定此帳號所屬的組織單位，不會自動指定直屬主管。">
+        <select
+          value={form.departmentId}
+          onChange={(event) => handleDepartmentChange(event.target.value)}
+          className="h-9 w-full rounded-md border border-input bg-white px-3 text-sm"
+        >
+          <option value="">不指定</option>
+          {departments.map((department) => (
+            <option key={department.id} value={department.id}>
+              {department.name}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label="直屬主管" hint="設定此員工實際向誰報告或由誰簽核，和組織單位的部門主管分開管理。">
+        <select
+          value={form.managerUserId}
+          onChange={(event) => setFormValue(setForm, "managerUserId", event.target.value)}
+          className="h-9 w-full rounded-md border border-input bg-white px-3 text-sm"
+        >
+          <option value="">不指定</option>
+          {managerOptions.map((user) => (
+            <option key={user.id} value={user.id}>
+              {user.displayName} / {user.username}
+            </option>
+          ))}
+        </select>
       </Field>
       <Field label="狀態">
         <select
@@ -578,6 +687,27 @@ function UserFields({
         <Field label="初始密碼">
           <Input type="password" value={form.password} onChange={(event) => setFormValue(setForm, "password", event.target.value)} minLength={8} required />
         </Field>
+      ) : null}
+      {includeRoles ? (
+        <section className="grid gap-2 md:col-span-2">
+          <div className="text-sm font-medium text-slate-700">角色</div>
+          <div className="grid gap-2 rounded-md border border-[#d6e8f4] bg-[#f8fcff] p-3 md:grid-cols-2">
+            {roles.map((role) => (
+              <label key={role.id} className="flex items-start gap-2 rounded-md bg-white px-3 py-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={form.roleIds.includes(role.id)}
+                  onChange={(event) => toggleRole(setForm, role.id, event.target.checked)}
+                />
+                <span className="min-w-0">
+                  <span className="block font-medium text-slate-900">{role.name}</span>
+                  <span className="block break-all text-xs text-slate-500">{role.code}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </section>
       ) : null}
       <label className="flex items-center gap-2 pt-7 text-sm text-slate-700">
         <input
@@ -651,11 +781,12 @@ function PasswordFields({
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="grid gap-1.5 text-sm font-medium text-slate-700">
       <span>{label}</span>
       {children}
+      {hint ? <span className="text-xs font-normal leading-5 text-slate-500">{hint}</span> : null}
     </label>
   );
 }
@@ -668,12 +799,25 @@ function setFormValue<Key extends keyof UserFormState>(
   setForm((current) => ({ ...current, [key]: value }));
 }
 
+function toggleRole(
+  setForm: React.Dispatch<React.SetStateAction<UserFormState>>,
+  roleId: string,
+  checked: boolean,
+) {
+  setForm((current) => {
+    const roleIds = new Set(current.roleIds);
+    if (checked) roleIds.add(roleId);
+    else roleIds.delete(roleId);
+    return { ...current, roleIds: Array.from(roleIds) };
+  });
+}
+
 function dialogTitle(mode: UserDialogMode | null) {
   switch (mode) {
     case "create":
-      return "新增使用者";
+      return "新增會員帳號";
     case "edit":
-      return "修改使用者";
+      return "修改帳號資料";
     case "profile":
       return "修改個人資料";
     case "changePassword":

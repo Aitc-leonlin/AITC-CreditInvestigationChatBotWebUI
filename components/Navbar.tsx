@@ -11,15 +11,19 @@ import PsychologyAltIcon from "@mui/icons-material/PsychologyAlt";
 import FunctionsIcon from "@mui/icons-material/Functions";
 import {
   Bot,
+  ChevronDown,
   Database,
   FileText,
   LogOut,
   Shield,
   ShieldCheck,
+  UserRound,
 } from "lucide-react";
 import {
+  getStoredAuthUser,
   getMembershipAccessToken,
   logoutMembership,
+  type AuthUser,
 } from "@/services/api/membershipAuthApi";
 import {
   METRIC_FORMULA_CATEGORIES,
@@ -35,6 +39,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "./ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { toast } from "sonner";
 
 export const ActiveLink = (props: {
@@ -321,9 +326,13 @@ function LogoutButton() {
   const router = useRouter();
   const pathname = usePathname();
   const [hasToken, setHasToken] = useState(false);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
     setHasToken(Boolean(getMembershipAccessToken()));
+    setAuthUser(getStoredAuthUser());
+    setIsOpen(false);
   }, [pathname]);
 
   async function handleLogout() {
@@ -332,22 +341,65 @@ function LogoutButton() {
       toast.success("已登出");
     } finally {
       setHasToken(false);
+      setAuthUser(null);
+      setIsOpen(false);
       router.replace("/login");
     }
   }
 
   if (!hasToken) return null;
 
+  const displayName = authUser?.displayName || authUser?.username || "使用者";
+  const accountText = authUser?.username
+    ? `${displayName}（${authUser.username}）`
+    : displayName;
+  const initials = getUserInitials(displayName);
+
   return (
-    <button
-      type="button"
-      onClick={handleLogout}
-      className="ml-2 flex h-9 items-center gap-2 rounded-full border border-rose-200 bg-white px-3 text-sm font-medium text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-50"
-    >
-      <span>登出</span>
-      <LogOut className="h-4 w-4" />
-    </button>
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title={accountText}
+          aria-label={`目前登入帳號：${accountText}`}
+          className="ml-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[#cfe4f2] bg-[#12344a] text-sm font-semibold text-white shadow-sm transition-colors hover:border-[#57A6D4] hover:bg-[#0f3f5d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#57A6D4] focus-visible:ring-offset-2"
+        >
+          {initials}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-64 rounded-lg border-[#d6e8f4] p-2">
+        <div className="flex items-center gap-3 border-b border-[#e3f0f7] px-2 py-2.5">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#12344a] text-sm font-semibold text-white">
+            {initials}
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-[#12344a]">{displayName}</div>
+            {authUser?.username ? <div className="truncate text-xs text-[#5d7b90]">{authUser.username}</div> : null}
+            {authUser?.email ? <div className="truncate text-xs text-[#5d7b90]">{authUser.email}</div> : null}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="mt-2 flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium text-rose-700 transition-colors hover:bg-rose-50"
+        >
+          <span className="flex items-center gap-2">
+            <LogOut className="h-4 w-4" />
+            登出
+          </span>
+          <ChevronDown className="h-4 w-4 rotate-[-90deg]" />
+        </button>
+      </PopoverContent>
+    </Popover>
   );
+}
+
+function getUserInitials(name: string) {
+  const value = name.trim();
+  if (!value) return <UserRound className="h-5 w-5" />;
+  const segments = value.split(/\s+/).filter(Boolean);
+  if (segments.length >= 2) return `${segments[0][0]}${segments[1][0]}`.toUpperCase();
+  return value.slice(0, 2).toUpperCase();
 }
 
 export function Navbar() {

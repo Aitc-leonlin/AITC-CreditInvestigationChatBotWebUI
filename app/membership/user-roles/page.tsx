@@ -4,7 +4,7 @@ import { MODULE_PERMISSIONS } from "@/data/modulePermissions";
 
 export default function MembershipUserRolesPage() {
   return (
-    <MembershipRouteGuard permission={MODULE_PERMISSIONS.rbacView}>
+    <MembershipRouteGuard permission={MODULE_PERMISSIONS.membershipUserRoles}>
       <UserRoleManagement />
     </MembershipRouteGuard>
   );

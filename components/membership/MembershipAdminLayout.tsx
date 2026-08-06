@@ -36,16 +36,11 @@ const ICONS: Record<string, LucideIcon> = {
 };
 
 const INCOMPLETE_MENU_CODES = new Set(["MEMBERSHIP_ORGS", "MEMBERSHIP_NOTIFICATIONS"]);
-const PENDING_HIDE_MENU_CODES = new Set([ "MEMBERSHIP_MENUS"]);
-
 function menuHref(menu: MembershipMenu) {
   return menu.routePath || "/membership/dashboard";
 }
 
 function menuTitle(menu: MembershipMenu) {
-  if (PENDING_HIDE_MENU_CODES.has(menu.code) && !menu.title.includes("(不可自定義，待隱藏)")) {
-    return `${menu.title}(不可自定義，待隱藏)`;
-  }
   if (!INCOMPLETE_MENU_CODES.has(menu.code) || menu.title.includes("(尚未完成)")) {
     return menu.title;
   }

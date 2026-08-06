@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { DataGrid, type GridColDef } from "@mui/x-data-grid";
-import { FolderKey, ShieldCheck } from "lucide-react";
+import { ChevronDown, FolderKey, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,9 @@ export default function PermissionManagement() {
   const [groups, setGroups] = useState<PermissionGroup[]>([]);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string>("__all__");
+  const [expandedModules, setExpandedModules] = useState<Set<string>>(
+    () => new Set(["會員權限管理", "授信 AI 助理", "徵審報告產生器", "未分類"]),
+  );
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
@@ -60,6 +63,7 @@ export default function PermissionManagement() {
       code: group.code,
       name: group.name,
       description: group.description,
+      moduleName: group.moduleName,
       permissions: permissionMap.get(group.id) ?? [],
     }));
     const ungroupedPermissions = permissionMap.get("__ungrouped__") ?? [];
@@ -71,6 +75,7 @@ export default function PermissionManagement() {
         code: "UNGROUPED",
         name: "未分組權限",
         description: "尚未指定權限群組的系統功能權限。",
+        moduleName: "",
         permissions: ungroupedPermissions,
       },
     ];
@@ -85,6 +90,42 @@ export default function PermissionManagement() {
     if (selectedGroupId === "__all__") return permissions;
     return selectedGroup?.permissions ?? [];
   }, [permissions, selectedGroup, selectedGroupId]);
+
+  const moduleSections = useMemo(() => {
+    const sectionMap = new Map<string, typeof groupSummaries>();
+    groupSummaries.forEach((group) => {
+      const moduleName = group.moduleName || "未分類";
+      sectionMap.set(moduleName, [...(sectionMap.get(moduleName) ?? []), group]);
+    });
+
+    const preferredOrder = ["會員權限管理", "授信 AI 助理", "徵審報告產生器", "未分類"];
+    return [...sectionMap.entries()]
+      .map(([moduleName, sections]) => ({
+        moduleName,
+        sections,
+        permissionCount: sections.reduce((total, section) => total + section.permissions.length, 0),
+      }))
+      .sort((a, b) => {
+        const aIndex = preferredOrder.indexOf(a.moduleName);
+        const bIndex = preferredOrder.indexOf(b.moduleName);
+        if (aIndex !== -1 || bIndex !== -1) {
+          return (aIndex === -1 ? Number.MAX_SAFE_INTEGER : aIndex) - (bIndex === -1 ? Number.MAX_SAFE_INTEGER : bIndex);
+        }
+        return a.moduleName.localeCompare(b.moduleName, "zh-Hant");
+      });
+  }, [groupSummaries]);
+
+  function toggleModule(moduleName: string) {
+    setExpandedModules((current) => {
+      const next = new Set(current);
+      if (next.has(moduleName)) {
+        next.delete(moduleName);
+      } else {
+        next.add(moduleName);
+      }
+      return next;
+    });
+  }
 
   const permissionColumns: GridColDef<Permission>[] = [
       { field: "code", headerName: "權限代碼", minWidth: 190, flex: 0.8 },
@@ -105,7 +146,7 @@ export default function PermissionManagement() {
         <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-[#12344a]">權限管理</h1>
-            <p className="mt-1 text-sm text-[#5d7b90]">權限與權限群組由系統版本定義；點選群組可檢視對應權限。</p>
+            <p className="mt-1 text-sm text-[#5d7b90]">權限與權限群組由程式碼定義；角色實際授權存放於資料庫。</p>
           </div>
           <Button variant="outline" onClick={() => void loadData()}>重新整理</Button>
         </section>
@@ -121,47 +162,79 @@ export default function PermissionManagement() {
                 <button
                   type="button"
                   onClick={() => setSelectedGroupId("__all__")}
-                  className={cn(
-                    "flex w-full items-start gap-3 rounded-md border px-3 py-3 text-left",
-                    selectedGroupId === "__all__"
-                      ? "border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200"
-                      : "border-slate-200 bg-white hover:bg-indigo-50",
-                  )}
-                >
-                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-indigo-600" />
+	                  className={cn(
+	                    "flex w-full items-start gap-3 rounded-md border px-3 py-3 text-left",
+	                    selectedGroupId === "__all__"
+	                      ? "border-cyan-400 bg-cyan-50 ring-1 ring-cyan-200"
+	                      : "border-slate-200 bg-white hover:border-cyan-200 hover:bg-cyan-50/70",
+	                  )}
+	                >
+	                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-cyan-600" />
                   <span className="min-w-0 flex-1">
                     <span className="font-semibold text-slate-900">全部權限</span>
                     <span className="mt-1 block text-xs leading-5 text-slate-500">顯示所有系統功能權限。</span>
                   </span>
-                  <span className="shrink-0 rounded bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
-                    {permissions.length}
-                  </span>
+	                  <span className="shrink-0 rounded bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-cyan-700">
+	                    {permissions.length}
+	                  </span>
                 </button>
-                {groupSummaries.map((section) => (
-                  <button
-                    key={section.id}
-                    type="button"
-                    onClick={() => setSelectedGroupId(section.id)}
-                    className={cn(
-                      "flex w-full items-start gap-3 rounded-md border px-3 py-3 text-left",
-                      selectedGroupId === section.id
-                        ? "border-indigo-300 bg-indigo-50 ring-1 ring-indigo-200"
-                        : "border-slate-200 bg-white hover:bg-indigo-50",
-                    )}
-                  >
-                    <FolderKey className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-                    <span className="min-w-0 flex-1">
-                      <span className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-slate-900">{section.name}</span>
-                        <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{section.code}</span>
-                      </span>
-                      <span className="mt-1 block text-xs leading-5 text-slate-500">{section.description || "無描述"}</span>
-                    </span>
-                    <span className="shrink-0 rounded bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-700">
-                      {section.permissions.length}
-                    </span>
-                  </button>
-                ))}
+                {moduleSections.map((moduleSection) => {
+                  const isExpanded = expandedModules.has(moduleSection.moduleName);
+                  return (
+                    <div key={moduleSection.moduleName} className="overflow-hidden rounded-md border border-indigo-200 bg-indigo-50/60">
+                      <button
+                        type="button"
+                        onClick={() => toggleModule(moduleSection.moduleName)}
+                        className="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-indigo-100/70"
+                      >
+                        <ChevronDown
+                          className={cn(
+                            "h-4 w-4 shrink-0 text-indigo-700 transition-transform",
+                            isExpanded ? "rotate-180" : "",
+                          )}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block font-semibold text-indigo-950">{moduleSection.moduleName}</span>
+                          <span className="mt-0.5 block text-xs text-indigo-700">
+                            {moduleSection.sections.length} 個權限群組
+                          </span>
+                        </span>
+                        <span className="shrink-0 rounded bg-white px-2 py-0.5 text-xs font-semibold text-indigo-800 ring-1 ring-indigo-200">
+                          {moduleSection.permissionCount}
+                        </span>
+                      </button>
+
+                      {isExpanded ? (
+                        <div className="space-y-2 border-t border-indigo-200 bg-white p-2">
+                          {moduleSection.sections.map((section) => (
+                            <button
+                              key={section.id}
+                              type="button"
+                              onClick={() => setSelectedGroupId(section.id)}
+                              className={cn(
+                                "flex w-full items-start gap-3 rounded-md border px-3 py-3 text-left",
+                                selectedGroupId === section.id
+                                  ? "border-cyan-400 bg-cyan-50 ring-1 ring-cyan-200"
+                                  : "border-slate-200 bg-slate-50 hover:border-cyan-200 hover:bg-cyan-50/70",
+                              )}
+                            >
+                              <FolderKey className="mt-0.5 h-4 w-4 shrink-0 text-cyan-600" />
+                              <span className="min-w-0 flex-1">
+                                <span className="font-semibold text-slate-900">{section.name}</span>
+                                <span className="mt-1 block text-xs leading-5 text-slate-500">
+                                  {section.description || "無描述"}
+                                </span>
+                              </span>
+                              <span className="shrink-0 rounded bg-cyan-50 px-2 py-0.5 text-xs font-semibold text-cyan-700">
+                                {section.permissions.length}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           </Panel>

@@ -53,9 +53,13 @@ import {
 } from "@/data/companyKnowledge";
 import { fetchAppliedExpertKnowledgeEntries } from "@/services/api/expertKnowledgeApi";
 import { fetchAppliedWarehouseDataEntries } from "@/services/api/warehouseDataApi";
+import {
+  type ChatConversation,
+  fetchChatConversations,
+  saveChatConversation,
+} from "@/services/api/chatConversationApi";
 import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
 
-const STORAGE_KEY = "aitc-chatbot-sessions-v1";
 const HISTORY_PANEL_STORAGE_KEY = "aitc-chatbot-history-panel-open-v1";
 const SETTINGS_PANEL_STORAGE_KEY = "aitc-chatbot-settings-panel-open-v2";
 
@@ -70,16 +74,7 @@ type ChatSettings = {
   useExternalData: boolean;
 };
 
-type ChatSession = {
-  id: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-  messages: Message[];
-  dataSourcesForMessages?: Record<string, any[]>;
-  expertKnowledgeForMessages?: Record<string, UsedExpertKnowledge[]>;
-  externalDataForMessages?: Record<string, ExternalReferenceData[]>;
-};
+type ChatSession = ChatConversation;
 
 type PendingSubmission = {
   requestMessages: Message[];
@@ -128,8 +123,15 @@ function formatQuestionWithContext(question: string, settings: ChatSettings) {
   const company = getCompanyPromptValue(settings.company);
   const period = getPeriodPromptValue(settings);
   if (!company && !period) return trimmedQuestion;
-  if (!company || !period) return trimmedQuestion;
-  return `根據${company}在${period}期間的資訊\n${trimmedQuestion}`;
+
+  const contextLine =
+    company && period
+      ? `根據${company}在${period}期間的資訊`
+      : company
+        ? `根據${company}的資訊`
+        : `根據${period}期間的資訊`;
+
+  return `${contextLine}\n${trimmedQuestion}`;
 }
 
 function getSelectedConditionSummary(settings: ChatSettings) {
@@ -144,7 +146,7 @@ function getSelectedConditionSummary(settings: ChatSettings) {
     return `目前條件：${company} / ${period}`;
   }
 
-  return "目前條件未完整，送出時將使用原始問題";
+  return company ? `目前公司條件：${company}` : `目前期間條件：${period}`;
 }
 
 function ReferenceSettingLabel(props: {
@@ -303,11 +305,6 @@ function createEmptySession(): ChatSession {
   };
 }
 
-function persistSessions(sessions: ChatSession[]) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
-}
-
 function upsertSession(
   sessions: ChatSession[],
   sessionId: string,
@@ -460,6 +457,7 @@ export function ChatInput(props: {
     >
       <div className="border border-input bg-secondary rounded-lg flex flex-col gap-2 w-full mx-auto">
         <input
+          id="chat-message-input"
           value={props.value}
           placeholder={props.placeholder}
           onChange={props.onChange}
@@ -472,6 +470,7 @@ export function ChatInput(props: {
           <div className="flex gap-2 self-end">
             {props.actions}
             <Button
+              id="chat-message-submit-button"
               type="submit"
               className="self-end"
               variant={props.loading ? "destructive" : "default"}
@@ -680,7 +679,7 @@ function SettingsPanel(props: {
       <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-4">
         <div>
           <div className="text-sm font-semibold">查詢設定</div>
-          <div className="text-xs text-muted-foreground">選擇公司、期間</div>
+          <div className="text-xs text-muted-foreground">公司、期間可擇一設定</div>
         </div>
         {props.onToggleCollapse ? (
           <Button
@@ -821,7 +820,7 @@ function SettingsPanel(props: {
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm leading-6 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-100">
           <div className="font-semibold">查詢設定說明</div>
           <div className="mt-1">
-            若已選擇公司與區間，送出對話時系統會自動將公司與時間組成查詢前言，並在下一行接續原始問題，再發送問題。
+            公司與期間可擇一設定，也可同時設定。送出對話時，系統會將已選條件組成查詢前言，並在下一行接續原始問題。
           </div>
           <div className="mt-1">
              <br />並可同時控制是否讓AI在回答時引用專家指引、資料倉儲或外部資料。
@@ -889,6 +888,7 @@ export function ChatWindow(props: {
     Record<string, ExternalReferenceData[]>
   >({});
   const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const sessionsRef = useRef<ChatSession[]>([]);
   const [draftSession, setDraftSession] = useState<ChatSession | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -903,45 +903,52 @@ export function ChatWindow(props: {
   const [externalDataQueryDraft, setExternalDataQueryDraft] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
   const externalDataConfirmTimerRef = useRef<number | null>(null);
+  const conversationSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 
   useEffect(() => {
-    const storedSessions = window.localStorage.getItem(STORAGE_KEY);
-    if (!storedSessions) {
-      const initialDraftSession = createEmptySession();
-      setSessions([]);
-      setDraftSession(initialDraftSession);
-      setActiveSessionId(initialDraftSession.id);
-      return;
-    }
+    let ignore = false;
+    // Remove the legacy browser copy. Conversation history is DB-only now.
+    window.localStorage.removeItem("aitc-chatbot-sessions-v1");
+    fetchChatConversations()
+      .then((storedSessions) => {
+        if (ignore) return;
+        if (storedSessions.length === 0) {
+          const initialDraftSession = createEmptySession();
+          sessionsRef.current = [];
+          setSessions([]);
+          setDraftSession(initialDraftSession);
+          setActiveSessionId(initialDraftSession.id);
+          return;
+        }
 
-    try {
-      const parsedSessions = JSON.parse(storedSessions) as ChatSession[];
-      if (parsedSessions.length === 0) {
+        const sortedSessions = [...storedSessions].sort((a, b) =>
+          b.updatedAt.localeCompare(a.updatedAt),
+        );
+        sessionsRef.current = sortedSessions;
+        setSessions(sortedSessions);
+        setDraftSession(null);
+        setActiveSessionId(sortedSessions[0].id);
+        const restoredReferenceMaps = getSessionReferenceMaps(sortedSessions[0]);
+        setDataSourcesForMessages(restoredReferenceMaps.dataSourcesForMessages);
+        setExpertKnowledgeForMessages(
+          restoredReferenceMaps.expertKnowledgeForMessages,
+        );
+        setExternalDataForMessages(restoredReferenceMaps.externalDataForMessages);
+      })
+      .catch((error) => {
+        if (ignore) return;
         const initialDraftSession = createEmptySession();
+        sessionsRef.current = [];
         setSessions([]);
         setDraftSession(initialDraftSession);
         setActiveSessionId(initialDraftSession.id);
-        return;
-      }
-
-      const sortedSessions = parsedSessions.sort((a, b) =>
-        b.updatedAt.localeCompare(a.updatedAt),
-      );
-      setSessions(sortedSessions);
-      setDraftSession(null);
-      setActiveSessionId(sortedSessions[0].id);
-      const restoredReferenceMaps = getSessionReferenceMaps(sortedSessions[0]);
-      setDataSourcesForMessages(restoredReferenceMaps.dataSourcesForMessages);
-      setExpertKnowledgeForMessages(
-        restoredReferenceMaps.expertKnowledgeForMessages,
-      );
-      setExternalDataForMessages(restoredReferenceMaps.externalDataForMessages);
-    } catch {
-      const initialDraftSession = createEmptySession();
-      setSessions([]);
-      setDraftSession(initialDraftSession);
-      setActiveSessionId(initialDraftSession.id);
-    }
+        toast.error(
+          error instanceof Error ? error.message : "讀取對話歷史失敗",
+        );
+      });
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -1043,9 +1050,22 @@ export function ChatWindow(props: {
       : openSidePanelsCount === 1
         ? "max-w-[960px]"
         : "max-w-[1100px]";
+
+  function queueConversationSave(session: ChatSession) {
+    conversationSaveQueueRef.current = conversationSaveQueueRef.current
+      .catch(() => undefined)
+      .then(() => saveChatConversation(session))
+      .catch((error) => {
+        toast.error(
+          error instanceof Error ? error.message : "儲存對話歷史失敗",
+        );
+      });
+  }
+
   function replaceActiveSession(
     messages: Message[],
     referenceMaps?: ReturnType<typeof createEmptyReferenceMaps>,
+    persistToDatabase = false,
   ) {
     if (!activeSessionId) return;
 
@@ -1064,16 +1084,20 @@ export function ChatWindow(props: {
       return;
     }
 
-    setSessions((currentSessions) => {
-      const nextSessions = upsertSession(
-        currentSessions,
-        activeSessionId,
-        messages,
-        referenceMaps,
+    const nextSessions = upsertSession(
+      sessionsRef.current,
+      activeSessionId,
+      messages,
+      referenceMaps,
+    );
+    sessionsRef.current = nextSessions;
+    setSessions(nextSessions);
+    if (persistToDatabase) {
+      const sessionToSave = nextSessions.find(
+        (session) => session.id === activeSessionId,
       );
-      persistSessions(nextSessions);
-      return nextSessions;
-    });
+      if (sessionToSave) queueConversationSave(sessionToSave);
+    }
 
     if (!isSavedSession) {
       setDraftSession(null);
@@ -1222,6 +1246,9 @@ export function ChatWindow(props: {
       });
 
     const emptyReferenceMaps = createEmptyReferenceMaps();
+    // Save the submitted user message immediately, then keep the temporary
+    // assistant placeholder only in React state while the response streams.
+    replaceActiveSession(requestMessages, emptyReferenceMaps, true);
     replaceActiveSession(displayMessages, emptyReferenceMaps);
     setIsLoading(true);
     setIntermediateStepsLoading(true);
@@ -1516,7 +1543,7 @@ export function ChatWindow(props: {
           role: "assistant",
           content: assistantContent,
         });
-        replaceActiveSession(finalMessages, responseReferenceMaps);
+        replaceActiveSession(finalMessages, responseReferenceMaps, true);
         return;
       }
 
@@ -1544,7 +1571,7 @@ export function ChatWindow(props: {
         role: "assistant",
         content: assistantContent,
       });
-      replaceActiveSession(finalMessages, responseReferenceMaps);
+      replaceActiveSession(finalMessages, responseReferenceMaps, true);
     } catch (error: any) {
       if (error?.name === "AbortError") {
         toast.message("已停止生成");
@@ -1553,7 +1580,7 @@ export function ChatWindow(props: {
           displayMessages[displayMessages.length - 1]?.content?.length === 0
             ? displayMessages.slice(0, -1)
             : displayMessages;
-        replaceActiveSession(fallbackMessages);
+        replaceActiveSession(fallbackMessages, undefined, true);
         toast.error("Error while processing your request", {
           description: error?.message ?? "未知錯誤",
         });
@@ -1724,7 +1751,7 @@ export function ChatWindow(props: {
                 <DialogContent className="p-0 sm:max-w-md">
                   <DialogHeader className="px-6 pt-6">
                     <DialogTitle>查詢設定</DialogTitle>
-                    <DialogDescription>選擇公司、期間</DialogDescription>
+                    <DialogDescription>公司、期間可擇一設定</DialogDescription>
                   </DialogHeader>
                   <div className="h-[60vh]">
                     <SettingsPanel

@@ -80,8 +80,6 @@ type DialogMode = "unit" | "position" | "mapping" | "manager" | "policy" | "row"
 const TABS: Array<{ key: TabKey; label: string; icon: typeof Building2 }> = [
   { key: "tree", label: "組織樹", icon: GitBranch },
   { key: "positions", label: "職位", icon: UserRoundCog },
-  { key: "mappings", label: "使用者部門", icon: Network },
-  { key: "managers", label: "主管關係", icon: ShieldCheck },
   { key: "policies", label: "Data Scope", icon: TableProperties },
   { key: "rules", label: "列欄遮罩", icon: Rows3 },
 ];
@@ -195,6 +193,7 @@ export default function OrganizationPermissionManagement() {
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [unitForm, setUnitForm] = useState<OrganizationUnitPayload>(UNIT_EMPTY);
   const [positionForm, setPositionForm] = useState<PositionPayload>(POSITION_EMPTY);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [mappingForm, setMappingForm] = useState<UserDepartmentMappingPayload>(MAPPING_EMPTY);
   const [managerForm, setManagerForm] = useState<ManagerRelationPayload>(MANAGER_EMPTY);
   const [policyForm, setPolicyForm] = useState<DataPermissionPolicyPayload>(POLICY_EMPTY);
@@ -203,6 +202,15 @@ export default function OrganizationPermissionManagement() {
   const [maskingRuleForm, setMaskingRuleForm] = useState<MaskingRulePayload>(MASKING_RULE_EMPTY);
 
   const flatTreeRows = useMemo(() => flattenTree(tree), [tree]);
+  const unitManagerScopeId = selectedUnit?.id ?? unitForm.parentId ?? unitForm.companyId ?? "";
+  const unitManagerUsers = useMemo(
+    () => filterUsersByOrganization(users, units, unitManagerScopeId),
+    [users, units, unitManagerScopeId],
+  );
+  const unitManagerUserIds = useMemo(() => new Set(unitManagerUsers.map((user) => user.id)), [unitManagerUsers]);
+  const unitManagerValue = unitForm.managerUserId && unitManagerUserIds.has(unitForm.managerUserId)
+    ? unitForm.managerUserId
+    : "";
 
   useEffect(() => {
     void loadAll();
@@ -265,6 +273,7 @@ export default function OrganizationPermissionManagement() {
     }
     setSelectedUnit(unit ?? null);
     setUnitForm(unit ? toUnitForm(unit) : UNIT_EMPTY);
+    setFieldErrors({});
     setDialogMode("unit");
   }
 
@@ -279,6 +288,7 @@ export default function OrganizationPermissionManagement() {
     }
     setSelectedPosition(position ?? null);
     setPositionForm(position ? toPositionForm(position) : POSITION_EMPTY);
+    setFieldErrors({});
     setDialogMode("position");
   }
 
@@ -286,10 +296,27 @@ export default function OrganizationPermissionManagement() {
     setDialogMode(null);
     setSelectedUnit(null);
     setSelectedPosition(null);
+    setFieldErrors({});
+  }
+
+  function updateUnitFormWithManagerScope(nextForm: OrganizationUnitPayload) {
+    const nextScopeId = selectedUnit?.id ?? nextForm.parentId ?? nextForm.companyId ?? "";
+    const nextManagerUsers = filterUsersByOrganization(users, units, nextScopeId);
+    const isManagerInScope = !nextForm.managerUserId || nextManagerUsers.some((user) => user.id === nextForm.managerUserId);
+    setUnitForm({
+      ...nextForm,
+      managerUserId: isManagerInScope ? nextForm.managerUserId : null,
+    });
   }
 
   async function submitUnit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const codeError = getCodeMinLengthError(unitForm.code, "組織代碼");
+    if (codeError) {
+      setFieldErrors((current) => ({ ...current, unitCode: codeError }));
+      toast.error(codeError);
+      return;
+    }
     if (selectedUnit && !canEdit) {
       toast.error("目前帳號沒有 organization-scope.edit 權限。");
       return;
@@ -299,8 +326,12 @@ export default function OrganizationPermissionManagement() {
       return;
     }
     try {
-      if (selectedUnit) await updateOrganizationUnit(selectedUnit.id, unitForm);
-      else await createOrganizationUnit(unitForm);
+      const payload = {
+        ...unitForm,
+        managerUserId: unitManagerValue || null,
+      };
+      if (selectedUnit) await updateOrganizationUnit(selectedUnit.id, payload);
+      else await createOrganizationUnit(payload);
       toast.success("已儲存組織單位");
       closeDialog();
       await loadAll();
@@ -311,6 +342,12 @@ export default function OrganizationPermissionManagement() {
 
   async function submitPosition(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const codeError = getCodeMinLengthError(positionForm.code, "職位代碼");
+    if (codeError) {
+      setFieldErrors((current) => ({ ...current, positionCode: codeError }));
+      toast.error(codeError);
+      return;
+    }
     if (selectedPosition && !canEdit) {
       toast.error("目前帳號沒有 organization-scope.edit 權限。");
       return;
@@ -440,7 +477,7 @@ export default function OrganizationPermissionManagement() {
     },
     { field: "code", headerName: "代碼", minWidth: 130 },
     { field: "unitType", headerName: "類型", minWidth: 120 },
-    { field: "managerDisplayName", headerName: "主管", minWidth: 140, flex: 0.6 },
+    { field: "managerDisplayName", headerName: "組織主管", minWidth: 140, flex: 0.6 },
     { field: "path", headerName: "Path", minWidth: 220, flex: 1 },
     {
       field: "actions",
@@ -625,16 +662,32 @@ export default function OrganizationPermissionManagement() {
         <DialogContent className="max-w-3xl">
           <DialogHeader><DialogTitle>{selectedUnit ? "修改組織單位" : "新增組織單位"}</DialogTitle></DialogHeader>
           <form className="grid gap-4 md:grid-cols-2" onSubmit={submitUnit}>
-            <Field label="代碼"><Input value={unitForm.code} onChange={(event) => setUnitForm({ ...unitForm, code: event.target.value })} required /></Field>
+            <Field label="代碼" hint="請輸入至少 2 碼，儲存後會自動轉成大寫。" error={fieldErrors.unitCode}>
+              <Input
+                value={unitForm.code}
+                onChange={(event) => {
+                  const code = event.target.value;
+                  setUnitForm({ ...unitForm, code });
+                  if (!getCodeMinLengthError(code, "組織代碼")) {
+                    setFieldErrors((current) => ({ ...current, unitCode: "" }));
+                  }
+                }}
+                required
+                minLength={2}
+                className={cn(fieldErrors.unitCode ? "border-red-500 ring-1 ring-red-200 focus-visible:ring-red-500" : "")}
+              />
+            </Field>
             <Field label="名稱"><Input value={unitForm.name} onChange={(event) => setUnitForm({ ...unitForm, name: event.target.value })} required /></Field>
             <Field label="類型"><Select value={unitForm.unitType} onChange={(value) => setUnitForm({ ...unitForm, unitType: value as OrganizationUnitType })} options={[["COMPANY", "Company"], ["DEPARTMENT", "Department"], ["TEAM", "Team"]]} /></Field>
-            <Field label="上層組織"><Select value={unitForm.parentId ?? ""} onChange={(value) => setUnitForm({ ...unitForm, parentId: value || null })} options={unitOptions(units, "不指定")} /></Field>
-            <Field label="所屬公司"><Select value={unitForm.companyId ?? ""} onChange={(value) => setUnitForm({ ...unitForm, companyId: value || null })} options={unitOptions(units.filter((unit) => unit.unitType === "COMPANY"), "自動/不指定")} /></Field>
-            <Field label="主管"><Select value={unitForm.managerUserId ?? ""} onChange={(value) => setUnitForm({ ...unitForm, managerUserId: value || null })} options={userOptions(users, "不指定")} /></Field>
+            <Field label="上層組織"><Select value={unitForm.parentId ?? ""} onChange={(value) => updateUnitFormWithManagerScope({ ...unitForm, parentId: value || null })} options={unitOptions(units, "不指定")} /></Field>
+            <Field label="所屬公司"><Select value={unitForm.companyId ?? ""} onChange={(value) => updateUnitFormWithManagerScope({ ...unitForm, companyId: value || null })} options={unitOptions(units.filter((unit) => unit.unitType === "COMPANY"), "自動/不指定")} /></Field>
+            <Field label="部門主管" hint={unitManagerScopeId ? "負責此組織單位的人，只顯示此組織與下層組織內的使用者；不會自動成為員工的直屬主管。" : "負責此組織單位的人；未選上層組織或所屬公司時顯示全部使用者。"}>
+              <Select value={unitManagerValue} onChange={(value) => setUnitForm({ ...unitForm, managerUserId: value || null })} options={userOptions(unitManagerUsers, "不指定")} />
+            </Field>
             <Field label="排序"><Input type="number" value={unitForm.sortOrder} onChange={(event) => setUnitForm({ ...unitForm, sortOrder: Number(event.target.value) })} /></Field>
             <Field label="狀態"><StatusSelect value={unitForm.status} onChange={(status) => setUnitForm({ ...unitForm, status })} /></Field>
             <label className="grid gap-1.5 text-sm font-medium text-slate-700 md:col-span-2">描述<textarea className="min-h-20 rounded-md border px-3 py-2 text-sm" value={unitForm.description} onChange={(event) => setUnitForm({ ...unitForm, description: event.target.value })} /></label>
-            <div className="flex justify-end md:col-span-2"><Button type="submit">儲存</Button></div>
+            <DialogActions onCancel={closeDialog} className="md:col-span-2" />
           </form>
         </DialogContent>
       </Dialog>
@@ -643,13 +696,27 @@ export default function OrganizationPermissionManagement() {
         <DialogContent>
           <DialogHeader><DialogTitle>{selectedPosition ? "修改職位" : "新增職位"}</DialogTitle></DialogHeader>
           <form className="grid gap-4" onSubmit={submitPosition}>
-            <Field label="代碼"><Input value={positionForm.code} onChange={(event) => setPositionForm({ ...positionForm, code: event.target.value })} required /></Field>
+            <Field label="代碼" hint="請輸入至少 2 碼，儲存後會自動轉成大寫。" error={fieldErrors.positionCode}>
+              <Input
+                value={positionForm.code}
+                onChange={(event) => {
+                  const code = event.target.value;
+                  setPositionForm({ ...positionForm, code });
+                  if (!getCodeMinLengthError(code, "職位代碼")) {
+                    setFieldErrors((current) => ({ ...current, positionCode: "" }));
+                  }
+                }}
+                required
+                minLength={2}
+                className={cn(fieldErrors.positionCode ? "border-red-500 ring-1 ring-red-200 focus-visible:ring-red-500" : "")}
+              />
+            </Field>
             <Field label="名稱"><Input value={positionForm.name} onChange={(event) => setPositionForm({ ...positionForm, name: event.target.value })} required /></Field>
             <Field label="職等"><Input type="number" value={positionForm.level} onChange={(event) => setPositionForm({ ...positionForm, level: Number(event.target.value) })} /></Field>
             <Field label="排序"><Input type="number" value={positionForm.sortOrder} onChange={(event) => setPositionForm({ ...positionForm, sortOrder: Number(event.target.value) })} /></Field>
             <Field label="狀態"><StatusSelect value={positionForm.status} onChange={(status) => setPositionForm({ ...positionForm, status })} /></Field>
             <Field label="描述"><Input value={positionForm.description} onChange={(event) => setPositionForm({ ...positionForm, description: event.target.value })} /></Field>
-            <Button type="submit">儲存</Button>
+            <DialogActions onCancel={closeDialog} />
           </form>
         </DialogContent>
       </Dialog>
@@ -662,7 +729,7 @@ export default function OrganizationPermissionManagement() {
             <Field label="部門/團隊"><Select value={mappingForm.organizationId} onChange={(value) => setMappingForm({ ...mappingForm, organizationId: value })} options={unitOptions(units, "請選擇")} required /></Field>
             <Field label="職位"><Select value={mappingForm.positionId ?? ""} onChange={(value) => setMappingForm({ ...mappingForm, positionId: value || null })} options={positionOptions(positions, "不指定")} /></Field>
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={mappingForm.isPrimary} onChange={(event) => setMappingForm({ ...mappingForm, isPrimary: event.target.checked })} />主要部門</label>
-            <Button type="submit">儲存</Button>
+            <DialogActions onCancel={closeDialog} />
           </form>
         </DialogContent>
       </Dialog>
@@ -675,7 +742,7 @@ export default function OrganizationPermissionManagement() {
             <Field label="Employee"><Select value={managerForm.employeeUserId} onChange={(value) => setManagerForm({ ...managerForm, employeeUserId: value })} options={userOptions(users, "請選擇")} required /></Field>
             <Field label="組織"><Select value={managerForm.organizationId ?? ""} onChange={(value) => setManagerForm({ ...managerForm, organizationId: value || null })} options={unitOptions(units, "不指定")} /></Field>
             <Field label="關係"><Input value={managerForm.relationType} onChange={(event) => setManagerForm({ ...managerForm, relationType: event.target.value })} /></Field>
-            <Button type="submit">儲存</Button>
+            <DialogActions onCancel={closeDialog} />
           </form>
         </DialogContent>
       </Dialog>
@@ -703,7 +770,7 @@ export default function OrganizationPermissionManagement() {
             <JsonField label="Row Rule JSON" value={policyForm.rowRule} onChange={(value) => setPolicyForm({ ...policyForm, rowRule: value })} />
             <JsonField label="Field Rule JSON" value={policyForm.fieldRule} onChange={(value) => setPolicyForm({ ...policyForm, fieldRule: value })} />
             <JsonField label="Masking Rule JSON" value={policyForm.maskingRule} onChange={(value) => setPolicyForm({ ...policyForm, maskingRule: value })} />
-            <div className="flex justify-end md:col-span-2"><Button type="submit">儲存</Button></div>
+            <DialogActions onCancel={closeDialog} className="md:col-span-2" />
           </form>
         </DialogContent>
       </Dialog>
@@ -754,7 +821,7 @@ function RuleDialogs(props: {
             <Field label="Resource"><Input value={props.rowRuleForm.resourceCode} onChange={(event) => props.setRowRuleForm({ ...props.rowRuleForm, resourceCode: event.target.value })} required /></Field>
             <Field label="Rule Name"><Input value={props.rowRuleForm.ruleName} onChange={(event) => props.setRowRuleForm({ ...props.rowRuleForm, ruleName: event.target.value })} required /></Field>
             <JsonField label="Expression JSON" value={props.rowRuleForm.expression} onChange={(value) => props.setRowRuleForm({ ...props.rowRuleForm, expression: value })} />
-            <Button type="submit">儲存</Button>
+            <DialogActions onCancel={props.closeDialog} />
           </form>
         </DialogContent>
       </Dialog>
@@ -767,7 +834,7 @@ function RuleDialogs(props: {
             <Field label="Field"><Input value={props.fieldRuleForm.fieldName} onChange={(event) => props.setFieldRuleForm({ ...props.fieldRuleForm, fieldName: event.target.value })} required /></Field>
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={props.fieldRuleForm.canRead} onChange={(event) => props.setFieldRuleForm({ ...props.fieldRuleForm, canRead: event.target.checked })} />可讀</label>
             <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={props.fieldRuleForm.canWrite} onChange={(event) => props.setFieldRuleForm({ ...props.fieldRuleForm, canWrite: event.target.checked })} />可寫</label>
-            <Button type="submit">儲存</Button>
+            <DialogActions onCancel={props.closeDialog} />
           </form>
         </DialogContent>
       </Dialog>
@@ -780,7 +847,7 @@ function RuleDialogs(props: {
             <Field label="Field"><Input value={props.maskingRuleForm.fieldName} onChange={(event) => props.setMaskingRuleForm({ ...props.maskingRuleForm, fieldName: event.target.value })} required /></Field>
             <Field label="Masking Type"><Input value={props.maskingRuleForm.maskingType} onChange={(event) => props.setMaskingRuleForm({ ...props.maskingRuleForm, maskingType: event.target.value })} /></Field>
             <Field label="Pattern"><Input value={props.maskingRuleForm.maskingPattern} onChange={(event) => props.setMaskingRuleForm({ ...props.maskingRuleForm, maskingPattern: event.target.value })} /></Field>
-            <Button type="submit">儲存</Button>
+            <DialogActions onCancel={props.closeDialog} />
           </form>
         </DialogContent>
       </Dialog>
@@ -835,8 +902,29 @@ function Panel({ title, action, children }: { title: string; action?: ReactNode;
   );
 }
 
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return <label className="grid gap-1.5 text-sm font-medium text-slate-700">{label}{children}</label>;
+function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: ReactNode }) {
+  return (
+    <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+      <span>{label}</span>
+      {children}
+      {error ? <span className="text-xs font-normal leading-5 text-red-600">{error}</span> : null}
+      {hint ? <span className="text-xs font-normal leading-5 text-slate-500">{hint}</span> : null}
+    </label>
+  );
+}
+
+function DialogActions({ onCancel, className }: { onCancel: () => void; className?: string }) {
+  return (
+    <div className={cn("flex justify-end gap-2", className)}>
+      <Button type="button" variant="outline" onClick={onCancel}>取消</Button>
+      <Button type="submit">儲存</Button>
+    </div>
+  );
+}
+
+function getCodeMinLengthError(code: string, fieldName: string) {
+  if (code.trim().length >= 2) return "";
+  return `${fieldName}請至少輸入 2 碼。`;
 }
 
 function Select({ value, onChange, options, required = false }: { value: string; onChange: (value: string) => void; options: Array<[string, string]>; required?: boolean }) {
@@ -911,6 +999,26 @@ function positionOptions(positions: Position[], emptyLabel: string): Array<[stri
 
 function userOptions(users: MembershipUser[], emptyLabel: string): Array<[string, string]> {
   return [["", emptyLabel], ...users.map((user) => [user.id, `${user.displayName} (${user.username})`] as [string, string])];
+}
+
+function filterUsersByOrganization(users: MembershipUser[], units: OrganizationUnit[], organizationId: string) {
+  if (!organizationId) return users;
+  const organizationIds = getOrganizationAndChildIds(units, organizationId);
+  return users.filter((user) => {
+    const departmentId = user.departmentId ?? user.organizationId;
+    return departmentId ? organizationIds.has(departmentId) : false;
+  });
+}
+
+function getOrganizationAndChildIds(units: OrganizationUnit[], organizationId: string) {
+  const target = units.find((unit) => unit.id === organizationId);
+  const ids = new Set<string>([organizationId]);
+  if (!target) return ids;
+  const pathPrefix = `${target.path}/`;
+  units.forEach((unit) => {
+    if (unit.id === organizationId || unit.path.startsWith(pathPrefix)) ids.add(unit.id);
+  });
+  return ids;
 }
 
 function roleOptions(roles: Role[], emptyLabel: string): Array<[string, string]> {

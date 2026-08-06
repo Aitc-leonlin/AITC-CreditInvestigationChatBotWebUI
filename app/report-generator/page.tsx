@@ -41,6 +41,7 @@ import {
   fetchReportDashboardByPath,
   generateReportDocument,
 } from "@/services/api/reportGeneratorApi";
+import { getStoredAuthUser, type AuthUser } from "@/services/api/membershipAuthApi";
 import type {
   ReportDashboard,
   ReportDashboardMetric,
@@ -297,6 +298,16 @@ function getFallbackCompletedDashboard(year: string): ReportDashboard {
 }
 
 export default function ReportGeneratorPage() {
+  return (
+    <MembershipRouteGuard permission={MODULE_PERMISSIONS.reportGeneratorCreate}>
+      <MembershipSessionGuard>
+        <ReportGeneratorContent />
+      </MembershipSessionGuard>
+    </MembershipRouteGuard>
+  );
+}
+
+function ReportGeneratorContent() {
   const [companyCode, setCompanyCode] = useState(
     "台灣積體電路製造股份有限公司 / 2330 / 台積電",
   );
@@ -306,6 +317,7 @@ export default function ReportGeneratorPage() {
   const [reportGeneratedAt, setReportGeneratedAt] = useState("");
   const [reportDashboard, setReportDashboard] = useState<ReportDashboard>(initialDashboard);
   const [reportStatus, setReportStatus] = useState<ReportStatus>("idle");
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const selectedCompany = getCompanyByLabel(companyCode);
@@ -315,6 +327,7 @@ export default function ReportGeneratorPage() {
   const reportSubtitle = `${year} 年度徵審報告 Q1 ~ Q4`;
   const reportStatusDetail = reportStatusConfig[reportStatus];
   const ReportStatusIcon = reportStatusDetail.Icon;
+  const reportGeneratedBy = authUser?.displayName || authUser?.username || "-";
   const financialTrendRows = reportDashboard.financialTrends;
   const trendStartYear = Number.isFinite(Number(year)) ? Number(year) - 1 : "";
   const trendYearRange = trendStartYear ? `${trendStartYear} - ${year}` : year;
@@ -367,6 +380,10 @@ export default function ReportGeneratorPage() {
   }
 
   useEffect(() => {
+    setAuthUser(getStoredAuthUser());
+  }, []);
+
+  useEffect(() => {
     return () => {
       if (progressTimerRef.current) {
         clearInterval(progressTimerRef.current);
@@ -393,6 +410,7 @@ export default function ReportGeneratorPage() {
         companyCode: selectedCompanyCode,
         companyLabel: companyCode,
         year,
+        generatedBy: reportGeneratedBy === "-" ? "" : reportGeneratedBy,
       });
 
       const downloadUrl = URL.createObjectURL(documentResult.blob);
@@ -422,9 +440,7 @@ export default function ReportGeneratorPage() {
   }
 
   return (
-    <MembershipRouteGuard permission={MODULE_PERMISSIONS.reportGeneratorCreate}>
-      <MembershipSessionGuard>
-        <main className="h-full overflow-y-auto bg-slate-50">
+    <main className="h-full overflow-y-auto bg-slate-50">
       <div className="grid min-h-full gap-5 p-5 xl:grid-cols-[352px_minmax(0,1fr)]">
         <aside className="rounded-lg border border-slate-200 bg-white shadow-sm">
           <div className="border-b border-slate-200 px-6 py-5">
@@ -529,7 +545,7 @@ export default function ReportGeneratorPage() {
                     </span>
                     <span className="flex items-center gap-2">
                       <User className="h-4 w-4" />
-                      產生人員：張小明
+                      產生人員：{reportGeneratedBy}
                     </span>
                   </div>
                 </div>
@@ -750,7 +766,5 @@ export default function ReportGeneratorPage() {
         Copyright © AITC 慶燁科技 All Rights Reserved.
       </footer>
         </main>
-      </MembershipSessionGuard>
-    </MembershipRouteGuard>
   );
 }

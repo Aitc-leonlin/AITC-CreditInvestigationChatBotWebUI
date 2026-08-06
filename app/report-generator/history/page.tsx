@@ -178,6 +178,16 @@ async function downloadHistoricalReport(report: HistoricalReport) {
 }
 
 export default function ReportHistoryPage() {
+  return (
+    <MembershipRouteGuard permission={MODULE_PERMISSIONS.reportGeneratorHistory}>
+      <MembershipSessionGuard>
+        <ReportHistoryContent />
+      </MembershipSessionGuard>
+    </MembershipRouteGuard>
+  );
+}
+
+function ReportHistoryContent() {
   const [selectedStatus, setSelectedStatus] = useState("");
   const [searchKeyword, setSearchKeyword] = useState("");
   const [debouncedSearchKeyword, setDebouncedSearchKeyword] = useState("");
@@ -420,9 +430,7 @@ export default function ReportHistoryPage() {
   ];
 
   return (
-    <MembershipRouteGuard permission={MODULE_PERMISSIONS.reportGeneratorHistory}>
-      <MembershipSessionGuard>
-        <main className="h-full overflow-y-auto">
+    <main className="h-full overflow-y-auto">
       <div className="mx-auto flex w-full flex-col gap-6 px-4 py-6 md:px-6">
         <section className="overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-teal-50 via-white to-slate-50 p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -708,7 +716,5 @@ export default function ReportHistoryPage() {
         </DialogContent>
       </Dialog>
         </main>
-      </MembershipSessionGuard>
-    </MembershipRouteGuard>
   );
 }

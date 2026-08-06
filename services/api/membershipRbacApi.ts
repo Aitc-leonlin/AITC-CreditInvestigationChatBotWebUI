@@ -13,7 +13,7 @@ export type Role = {
   code: string;
   name: string;
   description: string;
-  roleType: "SYSTEM" | "BUSINESS";
+  roleType: "SYSTEM" | "BUSINESS" | "USER";
   status: "ACTIVE" | "INACTIVE";
   isSystem: boolean;
   userCount: number;
@@ -27,6 +27,7 @@ export type PermissionGroup = {
   code: string;
   name: string;
   description: string;
+  moduleName: string;
   status: "ACTIVE" | "INACTIVE";
   permissionCount: number;
   createdAt: string;
@@ -47,7 +48,7 @@ export type Permission = {
   updatedAt: string;
 };
 
-export type RolePayload = Pick<Role, "code" | "name" | "description" | "roleType" | "status"> & {
+export type RolePayload = Pick<Role, "name" | "description" | "roleType" | "status"> & {
   isSystem: boolean;
 };
 

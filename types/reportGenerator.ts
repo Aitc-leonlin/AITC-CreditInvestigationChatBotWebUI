@@ -61,6 +61,7 @@ export type GenerateReportPayload = {
   companyCode: string;
   companyLabel: string;
   year: string;
+  generatedBy: string;
 };
 
 export type ReportDocumentResult = {

@@ -23,7 +23,7 @@ function parseContextualUserMessage(content: string) {
 
   if (
     !firstLine?.startsWith("根據") ||
-    !firstLine.includes("期間的資訊") ||
+    !firstLine.endsWith("的資訊") ||
     !questionBody
   ) {
     return null;

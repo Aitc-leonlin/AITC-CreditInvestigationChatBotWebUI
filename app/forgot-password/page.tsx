@@ -43,9 +43,9 @@ export default function ForgotPasswordPage() {
         <form className="grid gap-4" onSubmit={handleSubmit}>
           <label className="grid gap-1.5 text-sm font-medium text-slate-700">
             Email
-            <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
+            <Input id="forgot-password-email-input" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
           </label>
-          <Button type="submit" disabled={isSubmitting} className="bg-[#235c7c] text-white hover:bg-[#16445f]">
+          <Button id="forgot-password-submit-button" type="submit" disabled={isSubmitting} className="bg-[#235c7c] text-white hover:bg-[#16445f]">
             送出
           </Button>
         </form>
@@ -55,7 +55,7 @@ export default function ForgotPasswordPage() {
           <div className="mt-5 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
             <div className="font-semibold">開發測試 Reset Token</div>
             <div className="mt-2 break-all font-mono text-xs">{resetToken}</div>
-            <Link href={`/reset-password?token=${encodeURIComponent(resetToken)}`} className="mt-3 inline-block text-[#235c7c] hover:underline">
+            <Link href={`/reset-password/confirm?token=${encodeURIComponent(resetToken)}`} className="mt-3 inline-block text-[#235c7c] hover:underline">
               前往重設密碼
             </Link>
           </div>

@@ -109,6 +109,14 @@ function formatDateTime(value: string | null | undefined, fallback: string) {
 }
 
 export default function ExpertKnowledgePage() {
+  return (
+    <MembershipRouteGuard permission={MODULE_PERMISSIONS.creditAiExpertKnowledge}>
+      <ExpertKnowledgeContent />
+    </MembershipRouteGuard>
+  );
+}
+
+function ExpertKnowledgeContent() {
   const { hasPermission } = useMembershipPermissions();
   const [entries, setEntries] = useState<ExpertKnowledgeEntry[]>([]);
   const [detailEntry, setDetailEntry] = useState<ExpertKnowledgeEntry | null>(null);
@@ -337,8 +345,7 @@ export default function ExpertKnowledgePage() {
   ];
 
   return (
-    <MembershipRouteGuard permission={MODULE_PERMISSIONS.creditAiExpertKnowledge}>
-      <div className="h-full overflow-y-auto">
+    <div className="h-full overflow-y-auto">
       <div className="mx-auto flex w-full flex-col gap-6 px-4 py-6 md:px-6">
         <section className="overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -549,6 +556,5 @@ export default function ExpertKnowledgePage() {
         </Dialog>
       </div>
       </div>
-    </MembershipRouteGuard>
   );
 }

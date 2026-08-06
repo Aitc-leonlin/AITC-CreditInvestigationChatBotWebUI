@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { DataGrid, type GridColDef, type GridRowParams } from "@mui/x-data-grid";
-import { Save, UserRoundCheck } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Tooltip } from "@mui/material";
+import { DataGrid, type GridColDef } from "@mui/x-data-grid";
+import { RefreshCw, Save, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { fetchMembershipUsers, type MembershipUser } from "@/services/api/membershipUsersApi";
 import {
   fetchRoles,
@@ -18,42 +26,42 @@ import { useMembershipPermissions } from "@/hooks/useMembershipPermissions";
 
 export default function UserRoleManagement() {
   const { hasPermission, isLoading: isPermissionLoading } = useMembershipPermissions();
-  const canRead = hasPermission(MODULE_PERMISSIONS.rbacView);
-  const canEdit = hasPermission(MODULE_PERMISSIONS.rbacEdit);
+  const canUse = hasPermission(MODULE_PERMISSIONS.membershipUserRoles);
   const [users, setUsers] = useState<MembershipUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
-  const [selectedUser, setSelectedUser] = useState<MembershipUser | null>(null);
-  const [selectedRoleIds, setSelectedRoleIds] = useState<Set<string>>(new Set());
-  const [originalRoleIds, setOriginalRoleIds] = useState<Set<string>>(new Set());
-  const [anchorRoleId, setAnchorRoleId] = useState<string | null>(null);
+  const [userRoleNames, setUserRoleNames] = useState<Record<string, string[]>>({});
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [targetRoleIds, setTargetRoleIds] = useState<Set<string>>(new Set(["role-default-user"]));
+  const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const roleItemRefs = useRef<Map<string, HTMLLabelElement>>(new Map());
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!anchorRoleId) return;
-
-    window.requestAnimationFrame(() => {
-      roleItemRefs.current.get(anchorRoleId)?.scrollIntoView({
-        block: "center",
-        behavior: "smooth",
-      });
-    });
-  }, [anchorRoleId]);
-
   async function loadData() {
     try {
       setIsLoading(true);
       const [userResult, roleRows] = await Promise.all([
-        fetchMembershipUsers({ page: 1, pageSize: 100 }),
-        fetchRoles(),
+        fetchMembershipUsers({ page: 1, pageSize: 200 }),
+        fetchRoles({ status: "ACTIVE" }),
       ]);
+      const activeRoles = roleRows.filter((role) => role.status === "ACTIVE");
+      const roleNameById = new Map(activeRoles.map((role) => [role.id, role.name]));
+      const userRoleEntries = await Promise.all(
+        userResult.users.map(async (user) => {
+          const result = await fetchUserRoleIds(user.id);
+          return [
+            user.id,
+            result.roleIds.map((roleId) => roleNameById.get(roleId) ?? roleId),
+          ] as const;
+        }),
+      );
       setUsers(userResult.users);
-      setRoles(roleRows.filter((role) => role.status === "ACTIVE"));
+      setRoles(activeRoles);
+      setUserRoleNames(Object.fromEntries(userRoleEntries));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "讀取使用者角色資料失敗");
     } finally {
@@ -61,178 +69,211 @@ export default function UserRoleManagement() {
     }
   }
 
-  async function selectUser(user: MembershipUser) {
-    try {
-      setSelectedUser(user);
-      setAnchorRoleId(null);
-      const result = await fetchUserRoleIds(user.id);
-      const nextRoleIds = new Set(result.roleIds);
-      const firstSelectedRole = roles.find((role) => nextRoleIds.has(role.id));
-      setSelectedRoleIds(nextRoleIds);
-      setOriginalRoleIds(new Set(result.roleIds));
-      setAnchorRoleId(firstSelectedRole?.id ?? null);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "讀取使用者角色失敗");
+  async function applyBatchRoles() {
+    if (!canUse) {
+      toast.error("目前帳號沒有 membership.user-roles 權限。");
+      return;
     }
-  }
-
-  async function saveUserRoles() {
-    if (!selectedUser) return;
-    if (!canEdit) {
-      toast.error("目前帳號沒有 rbac.edit 權限。");
+    if (selectedUserIds.size === 0) {
+      toast.error("請先選擇要更新的帳號。");
+      return;
+    }
+    if (targetRoleIds.size === 0) {
+      toast.error("請至少選擇一個目標角色。");
       return;
     }
     try {
-      await setUserRoleIds(
-        selectedUser.id,
-        Array.from(selectedRoleIds),
-        selectedUser.organizationId,
+      setIsSaving(true);
+      const targetRoles = Array.from(targetRoleIds);
+      const selectedUsers = users.filter((user) => selectedUserIds.has(user.id));
+      await Promise.all(
+        selectedUsers.map((user) => setUserRoleIds(user.id, targetRoles, user.organizationId)),
       );
-      toast.success("已更新使用者角色");
-      setOriginalRoleIds(new Set(selectedRoleIds));
+      toast.success(`已批次更新 ${selectedUsers.length} 個帳號的角色`);
+      setBatchDialogOpen(false);
+      setSelectedUserIds(new Set());
       await loadData();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "更新使用者角色失敗");
+      toast.error(error instanceof Error ? error.message : "批次更新使用者角色失敗");
+    } finally {
+      setIsSaving(false);
     }
   }
 
-  const hasRoleChanges = !areSetsEqual(selectedRoleIds, originalRoleIds);
+  const selectedUsers = useMemo(
+    () => users.filter((user) => selectedUserIds.has(user.id)),
+    [selectedUserIds, users],
+  );
 
   const columns: GridColDef<MembershipUser>[] = [
-      { field: "username", headerName: "帳號", minWidth: 160, flex: 0.7 },
-      { field: "displayName", headerName: "姓名", minWidth: 160, flex: 0.7 },
-      { field: "email", headerName: "Email", minWidth: 220, flex: 1 },
-      { field: "organizationName", headerName: "組織", minWidth: 140, flex: 0.6 },
-    ];
+    {
+      field: "roles",
+      headerName: "目前角色",
+      minWidth: 220,
+      flex: 0.9,
+      sortable: false,
+      renderCell: (params) => <RoleSummary roles={userRoleNames[params.row.id] ?? []} />,
+    },
+    { field: "username", headerName: "帳號", minWidth: 160, flex: 0.7 },
+    { field: "displayName", headerName: "姓名", minWidth: 160, flex: 0.7 },
+    { field: "email", headerName: "Email", minWidth: 220, flex: 1 },
+    { field: "organizationName", headerName: "組織", minWidth: 140, flex: 0.6 },
+    { field: "status", headerName: "狀態", minWidth: 90 },
+  ];
 
   if (isPermissionLoading) return null;
-
-  if (!canRead) {
-    return <AccessDenied title="使用者角色設定" />;
-  }
+  if (!canUse) return <AccessDenied title="使用者角色批次設定" />;
 
   return (
     <main className="h-full overflow-hidden bg-[#f8fcff]">
-      <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-4 px-5 py-5 md:px-7">
+      <div className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-4 px-5 py-5 md:px-7">
         <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-[#12344a]">使用者角色設定</h1>
-            <p className="mt-1 text-sm text-[#5d7b90]">替使用者設定多個角色，權限會依所有啟用角色彙整。</p>
+            <h1 className="text-2xl font-semibold text-[#12344a]">使用者角色批次設定</h1>
+            <p className="mt-1 text-sm text-[#5d7b90]">選取多個帳號後，一次覆蓋成指定角色組合。</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {canUse ? (
+              <Button
+                className="bg-indigo-600 text-white hover:bg-indigo-700"
+                disabled={selectedUserIds.size === 0}
+                onClick={() => setBatchDialogOpen(true)}
+              >
+                <UsersRound className="h-4 w-4" />
+                批次套用角色
+              </Button>
+            ) : null}
+            <Button variant="outline" onClick={() => void loadData()}>
+              <RefreshCw className="h-4 w-4" />
+              重新整理
+            </Button>
           </div>
         </section>
-        <SelectedUserSummary user={selectedUser} />
-        <section className="grid min-h-0 gap-4 md:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="overflow-hidden rounded-lg border border-[#d6e8f4] bg-white">
+
+        <section className="min-h-0 overflow-hidden rounded-lg border border-[#d6e8f4] bg-white">
+          <div className="h-full min-h-0 overflow-hidden">
             <DataGrid
               rows={users}
               columns={columns}
               loading={isLoading}
+              checkboxSelection
+              disableRowSelectionOnClick
               getRowHeight={() => 58}
-              onRowClick={(params: GridRowParams<MembershipUser>) => void selectUser(params.row)}
-              getRowClassName={(params) => (params.row.id === selectedUser?.id ? "bg-indigo-50" : "")}
-              sx={{
-                "& .MuiDataGrid-row": { cursor: "pointer" },
-                "& .MuiDataGrid-row:hover": { backgroundColor: "#eef2ff" },
-              }}
+              rowSelectionModel={{ type: "include", ids: selectedUserIds }}
+              onRowSelectionModelChange={(model) => setSelectedUserIds(new Set(Array.from(model.ids).map(String)))}
             />
           </div>
-          <aside className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-[#d6e8f4] bg-white">
-            <div className="border-b border-[#d6e8f4] px-4 py-3 text-sm font-semibold text-[#12344a]">角色清單</div>
-            <div className="min-h-0 overflow-y-auto p-4">
-              <div className="grid gap-2">
+        </section>
+      </div>
+
+      <Dialog open={batchDialogOpen} onOpenChange={setBatchDialogOpen}>
+        <DialogContent className="flex max-h-[88vh] max-w-3xl flex-col overflow-hidden p-0">
+          <DialogHeader className="shrink-0 border-b px-6 py-5">
+            <DialogTitle>批次套用角色</DialogTitle>
+            <DialogDescription>
+              已選 {selectedUserIds.size} 個帳號；儲存後會覆蓋這些帳號目前的角色組合。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid min-h-0 gap-4 overflow-y-auto px-6 py-5">
+            <section>
+              <div className="mb-2 text-xs font-semibold text-slate-500">選取帳號</div>
+              <div className="max-h-32 overflow-y-auto rounded-md bg-[#f8fcff] p-3 text-sm text-slate-700">
+                {selectedUsers.length > 0 ? selectedUsers.map((user) => (
+                  <div key={user.id} className="truncate">{user.username} / {user.displayName}</div>
+                )) : <span className="text-slate-400">尚未選取帳號</span>}
+              </div>
+            </section>
+
+            <section>
+              <div className="mb-2 text-xs font-semibold text-slate-500">目標角色</div>
+              <div className="grid gap-2 md:grid-cols-2">
                 {roles.map((role) => (
                   <label
                     key={role.id}
-                    ref={(element) => {
-                      if (element) roleItemRefs.current.set(role.id, element);
-                      else roleItemRefs.current.delete(role.id);
-                    }}
                     className={`flex items-start gap-3 rounded-md border p-3 text-sm ${
-                      selectedRoleIds.has(role.id) ? "border-indigo-200 bg-indigo-50/70" : ""
+                      targetRoleIds.has(role.id) ? "border-indigo-200 bg-indigo-50/70" : "border-slate-200 bg-white"
                     }`}
                   >
                     <input
                       type="checkbox"
                       className="mt-1"
-                      checked={selectedRoleIds.has(role.id)}
-                      disabled={!selectedUser || !canEdit}
-                      onChange={(event) => {
-                        setSelectedRoleIds((current) => {
-                          const next = new Set(current);
-                          if (event.target.checked) next.add(role.id);
-                          else next.delete(role.id);
-                          return next;
-                        });
-                      }}
+                      checked={targetRoleIds.has(role.id)}
+                      disabled={!canUse}
+                      onChange={(event) => toggleTargetRole(setTargetRoleIds, role.id, event.target.checked)}
                     />
-                    <span>
+                    <span className="min-w-0">
                       <span className="block font-semibold text-slate-900">{role.name}</span>
-                      <span className="block text-xs text-slate-500">{role.code}</span>
+                      <span className="block break-all text-xs text-slate-500">{role.code}</span>
                     </span>
                   </label>
                 ))}
               </div>
-            </div>
-            {canEdit ? (
-              <div className="border-t border-[#d6e8f4] bg-white p-4">
-                <Button className="w-full bg-indigo-600 text-white hover:bg-indigo-700" disabled={!selectedUser || !hasRoleChanges} onClick={() => void saveUserRoles()}>
-                  <Save className="h-4 w-4" />
-                  儲存角色
-                </Button>
-              </div>
-            ) : null}
-          </aside>
-        </section>
-      </div>
+            </section>
+          </div>
+
+          <div className="flex shrink-0 justify-end gap-2 border-t bg-white px-6 py-4">
+            <Button type="button" variant="outline" onClick={() => setBatchDialogOpen(false)}>
+              取消
+            </Button>
+            <Button
+              className="bg-indigo-600 text-white hover:bg-indigo-700"
+              disabled={isSaving || selectedUserIds.size === 0 || targetRoleIds.size === 0}
+              onClick={() => void applyBatchRoles()}
+            >
+              <Save className="h-4 w-4" />
+              套用到選取帳號
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
 
-function SelectedUserSummary({ user }: { user: MembershipUser | null }) {
-  return (
-    <section className="rounded-lg border border-[#d6e8f4] bg-white p-4">
-      <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-[#12344a]">
-        <UserRoundCheck className="h-4 w-4 text-indigo-600" />
-        當前選取帳號
-      </div>
-      {user ? (
-        <div className="grid gap-3 md:grid-cols-5">
-          <SummaryItem label="帳號" value={user.username} />
-          <SummaryItem label="姓名" value={user.displayName} />
-          <SummaryItem label="Email" value={user.email} />
-          <SummaryItem label="組織" value={user.organizationName || user.organizationId || "-"} />
-          <SummaryItem label="狀態" value={user.status === "ACTIVE" ? "啟用" : "停用"} />
-        </div>
-      ) : (
-        <div className="grid gap-3 md:grid-cols-5">
-          <SummaryItem label="帳號" value="" />
-          <SummaryItem label="姓名" value="" />
-          <SummaryItem label="Email" value="" />
-          <SummaryItem label="組織" value="" />
-          <SummaryItem label="狀態" value="" />
-        </div>
-      )}
-    </section>
-  );
-}
-
-function SummaryItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0 rounded-md bg-[#f8fcff] px-3 py-2">
-      <div className="text-xs font-medium text-[#5d7b90]">{label}</div>
-      <div className="mt-1 min-h-5 truncate text-sm font-semibold leading-5 text-slate-900">
-        {value || <span className="invisible">-</span>}
-      </div>
-    </div>
-  );
-}
-
-function areSetsEqual(left: Set<string>, right: Set<string>) {
-  if (left.size !== right.size) return false;
-  for (const value of left) {
-    if (!right.has(value)) return false;
+function RoleSummary({ roles }: { roles: string[] }) {
+  if (roles.length === 0) {
+    return (
+      <div className="flex h-full min-w-0 items-center text-sm text-slate-400">-</div>
+    );
   }
-  return true;
+
+  const visibleRoles = roles.slice(0, 2);
+  const extraCount = Math.max(0, roles.length - visibleRoles.length);
+  const fullText = roles.join("、");
+
+  return (
+    <Tooltip title={fullText} arrow placement="top">
+      <div className="flex h-full min-w-0 items-center gap-1 overflow-hidden">
+        {visibleRoles.map((role) => (
+          <span
+            key={role}
+            className="max-w-[6.5rem] truncate rounded bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700"
+          >
+            {role}
+          </span>
+        ))}
+        {extraCount > 0 ? (
+          <span className="shrink-0 rounded bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+            +{extraCount}
+          </span>
+        ) : null}
+      </div>
+    </Tooltip>
+  );
+}
+
+function toggleTargetRole(
+  setTargetRoleIds: React.Dispatch<React.SetStateAction<Set<string>>>,
+  roleId: string,
+  checked: boolean,
+) {
+  setTargetRoleIds((current) => {
+    const next = new Set(current);
+    if (checked) next.add(roleId);
+    else next.delete(roleId);
+    return next;
+  });
 }
 
 function AccessDenied({ title }: { title: string }) {
@@ -240,7 +281,7 @@ function AccessDenied({ title }: { title: string }) {
     <main className="grid h-full place-items-center bg-[#f8fcff] p-6">
       <section className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-amber-900">
         <div className="text-lg font-semibold">{title}</div>
-        <div className="mt-2 text-sm">目前帳號沒有 rbac.view 權限。</div>
+        <div className="mt-2 text-sm">目前帳號沒有 membership.user-roles 權限。</div>
       </section>
     </main>
   );

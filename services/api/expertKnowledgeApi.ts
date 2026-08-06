@@ -67,11 +67,15 @@ export async function fetchExpertKnowledgeEntry(entryId: string) {
 
 export async function createExpertKnowledgeEntry(
   payload: ExpertKnowledgeSavePayload,
+  options: { aiGenerated?: boolean } = {},
 ) {
   return readJsonResponse<ExpertKnowledgeEntry>(
     await fetchBackendApi(BACKEND_API_PATHS.expertKnowledge, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.aiGenerated ? { "X-Audit-Source": "ai-generated" } : {}),
+      },
       body: JSON.stringify(payload),
     }),
   );
@@ -80,13 +84,17 @@ export async function createExpertKnowledgeEntry(
 export async function updateExpertKnowledgeEntry(
   entryId: string,
   payload: ExpertKnowledgeSavePayload,
+  options: { aiGenerated?: boolean } = {},
 ) {
   return readJsonResponse<ExpertKnowledgeEntry>(
     await fetchBackendApi(
       `${BACKEND_API_PATHS.expertKnowledge}/${entryId}`,
       {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.aiGenerated ? { "X-Audit-Source": "ai-generated" } : {}),
+        },
         body: JSON.stringify(payload),
       },
     ),
