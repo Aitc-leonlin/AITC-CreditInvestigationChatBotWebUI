@@ -5,6 +5,8 @@ import { BACKEND_API_PATHS } from "@/utils/api";
 export default function AgentsPage() {
   const InfoCard = (
     <GuideInfoBox>
+      {/* TEMPORARY: 對應後端路由尚未實作，此紅色標題為權宜標示，完成後移除。 */}
+      <h1 className="mb-4 text-xl font-semibold text-rose-700">Retrieval Agents 範例(尚未完成)</h1>
       <ul>
         <li className="hidden text-l md:block">
           🤝

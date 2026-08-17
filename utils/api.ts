@@ -37,6 +37,7 @@ export const BACKEND_API_PATHS = {
   membershipRbac: "/api/membership/rbac",
   membershipUsers: "/api/membership/users",
   membershipOrganizations: "/api/membership/organizations",
+  membershipGroups: "/api/membership/groups",
   membershipAdmin: "/api/membership/admin",
 } as const;
 

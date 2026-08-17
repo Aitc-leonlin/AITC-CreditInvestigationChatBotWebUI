@@ -22,8 +22,8 @@ test.describe("Audit Log 待人工補完案例", () => {
   // TODO：之後由人類處理。會員 CRUD 會變更帳號、角色及登入狀態，需隔離 DB 與 cleanup。
   test.skip("membership user CRUD / status / password reset", async () => {});
 
-  // TODO：之後由人類處理。角色、批次角色、組織範圍與遮罩規則需固定測試資料集。
-  test.skip("membership role / user roles / organization / masking", async () => {});
+  // TODO：之後由人類處理。角色、批次角色與組織管理需固定測試資料集。
+  test.skip("membership role / user roles / organization", async () => {});
 
   // TODO：之後由人類處理。通知範本修改需備份並還原原始範本內容。
   test.skip("membership.notification_template.update", async () => {});

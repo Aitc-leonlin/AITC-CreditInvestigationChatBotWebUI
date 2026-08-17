@@ -25,6 +25,7 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import MembershipStatusChip from "@/components/membership/MembershipStatusChip";
 import {
   Dialog,
   DialogContent,
@@ -344,20 +345,11 @@ export default function UserManagement() {
       },
       {
         field: "status",
-        headerName: "狀態",
+        headerName: "帳號狀態",
         minWidth: 110,
         renderCell: (params: GridRenderCellParams<MembershipUser>) => (
           <div className="flex h-full items-center">
-            <Chip
-              label={params.row.status === "ACTIVE" ? "啟用" : "停用"}
-              size="small"
-              sx={{
-                borderRadius: "999px",
-                fontWeight: 700,
-                color: params.row.status === "ACTIVE" ? "#166534" : "#991b1b",
-                backgroundColor: params.row.status === "ACTIVE" ? "#dcfce7" : "#fee2e2",
-              }}
-            />
+            <MembershipStatusChip status={params.row.status} />
           </div>
         ),
       },
@@ -464,9 +456,10 @@ export default function UserManagement() {
                 <RefreshCw className="h-4 w-4" />
                 重新整理
               </Button>
-              <Button variant="outline" onClick={handleRequestEmailVerification}>
+              {/* TEMPORARY: 寄送 Email 驗證信尚未完成，此紅色標示為權宜處理，完成後移除。 */}
+              <Button variant="outline" className="border-rose-200 text-rose-700 hover:bg-rose-50" onClick={handleRequestEmailVerification}>
                 <CheckCircle2 className="h-4 w-4" />
-                Email 驗證
+                Email 驗證(尚未完成)
               </Button>
               {canWriteUsers ? (
                 <Button onClick={openCreateDialog} className="bg-[#235c7c] text-white hover:bg-[#16445f]">
@@ -486,7 +479,7 @@ export default function UserManagement() {
             loading={isLoading}
             paginationMode="server"
             paginationModel={paginationModel}
-            onPaginationModelChange={setPaginationModel}
+            onPaginationModelChange={(nextModel) => setPaginationModel((current) => ({ ...nextModel, page: nextModel.pageSize !== current.pageSize ? 0 : nextModel.page }))}
             pageSizeOptions={[10, 20, 50]}
             disableRowSelectionOnClick
             getRowHeight={() => 64}
@@ -667,7 +660,7 @@ function UserFields({
           ))}
         </select>
       </Field>
-      <Field label="狀態">
+      <Field label="帳號狀態">
         <select
           value={form.status}
           onChange={(event) => setFormValue(setForm, "status", event.target.value as MembershipUserStatus)}

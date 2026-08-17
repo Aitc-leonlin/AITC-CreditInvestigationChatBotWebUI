@@ -51,8 +51,8 @@ const widgets = [
     icon: ShieldCheck,
   },
   {
-    title: "組織資料權限",
-    description: "公司、部門、團隊、職位與資料可視範圍設定。",
+    title: "組織管理",
+    description: "公司、部門、團隊、職位、部門對應與主管關係設定。",
     href: "/membership/organizations",
     permission: MODULE_PERMISSIONS.organizationScopeView,
     icon: Building2,

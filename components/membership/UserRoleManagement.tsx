@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Tooltip } from "@mui/material";
-import { DataGrid, type GridColDef } from "@mui/x-data-grid";
+import { DataGrid, type GridColDef, type GridRowSelectionModel } from "@mui/x-data-grid";
 import { RefreshCw, Save, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import MembershipStatusChip from "@/components/membership/MembershipStatusChip";
 import {
   Dialog,
   DialogContent,
@@ -118,7 +119,7 @@ export default function UserRoleManagement() {
     { field: "displayName", headerName: "姓名", minWidth: 160, flex: 0.7 },
     { field: "email", headerName: "Email", minWidth: 220, flex: 1 },
     { field: "organizationName", headerName: "組織", minWidth: 140, flex: 0.6 },
-    { field: "status", headerName: "狀態", minWidth: 90 },
+    { field: "status", headerName: "帳號狀態", minWidth: 110, renderCell: (params) => <div className="flex h-full items-center"><MembershipStatusChip status={params.row.status} /></div> },
   ];
 
   if (isPermissionLoading) return null;
@@ -160,7 +161,9 @@ export default function UserRoleManagement() {
               disableRowSelectionOnClick
               getRowHeight={() => 58}
               rowSelectionModel={{ type: "include", ids: selectedUserIds }}
-              onRowSelectionModelChange={(model) => setSelectedUserIds(new Set(Array.from(model.ids).map(String)))}
+              onRowSelectionModelChange={(model) => setSelectedUserIds(resolveSelectedRowIds(model, users.map((user) => user.id)))}
+              pageSizeOptions={[10, 20, 50, 100]}
+              initialState={{ pagination: { paginationModel: { page: 0, pageSize: 10 } } }}
             />
           </div>
         </section>
@@ -274,6 +277,14 @@ function toggleTargetRole(
     else next.delete(roleId);
     return next;
   });
+}
+
+function resolveSelectedRowIds(model: GridRowSelectionModel, rowIds: string[]) {
+  const modelIds = new Set(Array.from(model.ids).map(String));
+  if (model.type === "exclude") {
+    return new Set(rowIds.filter((rowId) => !modelIds.has(rowId)));
+  }
+  return modelIds;
 }
 
 function AccessDenied({ title }: { title: string }) {

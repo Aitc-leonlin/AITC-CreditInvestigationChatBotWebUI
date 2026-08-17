@@ -9,9 +9,6 @@ import {
   Network,
   Pencil,
   Plus,
-  Rows3,
-  ShieldCheck,
-  TableProperties,
   Trash2,
   UserRoundCog,
 } from "lucide-react";
@@ -20,7 +17,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { fetchRoles, type Role } from "@/services/api/membershipRbacApi";
+import MembershipStatusChip from "@/components/membership/MembershipStatusChip";
 import { fetchMembershipUsers, type MembershipUser } from "@/services/api/membershipUsersApi";
 import { MODULE_PERMISSIONS } from "@/data/modulePermissions";
 import { useMembershipPermissions } from "@/hooks/useMembershipPermissions";
@@ -28,60 +25,39 @@ import {
   createManagerRelation,
   createOrganizationUnit,
   createPosition,
-  createRowRule,
   createUserDepartmentMapping,
-  deleteDataPolicy,
-  deleteFieldRule,
   deleteManagerRelation,
-  deleteMaskingRule,
   deleteOrganizationUnit,
   deletePosition,
-  deleteRowRule,
   deleteUserDepartmentMapping,
-  fetchDataPolicies,
-  fetchFieldRules,
   fetchManagerRelations,
-  fetchMaskingRules,
   fetchOrganizationTree,
   fetchOrganizationUnits,
   fetchPositions,
-  fetchRowRules,
   fetchUserDepartmentMappings,
-  saveDataPolicy,
-  saveFieldRule,
-  saveMaskingRule,
   updateOrganizationUnit,
   updatePosition,
-  type DataPermissionPolicy,
-  type DataPermissionPolicyPayload,
-  type DataScope,
-  type FieldPermissionRule,
-  type FieldPermissionRulePayload,
   type ManagerRelation,
   type ManagerRelationPayload,
-  type MaskingRule,
-  type MaskingRulePayload,
   type OrganizationUnit,
   type OrganizationUnitPayload,
   type OrganizationUnitType,
   type Position,
   type PositionPayload,
-  type RowPermissionRule,
-  type RowPermissionRulePayload,
   type Status,
   type UserDepartmentMapping,
   type UserDepartmentMappingPayload,
 } from "@/services/api/membershipOrganizationApi";
 import { cn } from "@/utils/cn";
 
-type TabKey = "tree" | "positions" | "mappings" | "managers" | "policies" | "rules";
-type DialogMode = "unit" | "position" | "mapping" | "manager" | "policy" | "row" | "field" | "masking";
+type TabKey = "tree" | "positions" | "mappings" | "managers";
+type DialogMode = "unit" | "position" | "mapping" | "manager";
 
 const TABS: Array<{ key: TabKey; label: string; icon: typeof Building2 }> = [
   { key: "tree", label: "組織樹", icon: GitBranch },
   { key: "positions", label: "職位", icon: UserRoundCog },
-  { key: "policies", label: "Data Scope", icon: TableProperties },
-  { key: "rules", label: "列欄遮罩", icon: Rows3 },
+  { key: "mappings", label: "部門對應", icon: Network },
+  { key: "managers", label: "主管關係", icon: Building2 },
 ];
 
 const UNIT_EMPTY: OrganizationUnitPayload = {
@@ -122,53 +98,6 @@ const MANAGER_EMPTY: ManagerRelationPayload = {
   status: "ACTIVE",
 };
 
-const POLICY_EMPTY: DataPermissionPolicyPayload = {
-  subjectType: "ROLE",
-  subjectId: "",
-  resourceCode: "membership_user",
-  dataScope: "ONLY_MYSELF",
-  customScope: [],
-  rowRule: {},
-  fieldRule: {},
-  maskingRule: {},
-  status: "ACTIVE",
-};
-
-const ROW_RULE_EMPTY: RowPermissionRulePayload = {
-  policyId: "",
-  resourceCode: "membership_user",
-  ruleName: "",
-  expression: {},
-  effect: "ALLOW",
-  status: "ACTIVE",
-};
-
-const FIELD_RULE_EMPTY: FieldPermissionRulePayload = {
-  policyId: "",
-  resourceCode: "membership_user",
-  fieldName: "",
-  canRead: true,
-  canWrite: false,
-  status: "ACTIVE",
-};
-
-const MASKING_RULE_EMPTY: MaskingRulePayload = {
-  policyId: "",
-  resourceCode: "membership_user",
-  fieldName: "",
-  maskingType: "PARTIAL",
-  maskingPattern: "***",
-  status: "ACTIVE",
-};
-
-const DATA_SCOPE_OPTIONS: Array<{ value: DataScope; label: string }> = [
-  { value: "ONLY_MYSELF", label: "Only Myself" },
-  { value: "SAME_DEPARTMENT", label: "Same Department" },
-  { value: "SUB_DEPARTMENT", label: "Sub Department" },
-  { value: "WHOLE_COMPANY", label: "Whole Company" },
-  { value: "CUSTOM", label: "Custom Scope" },
-];
-
 export default function OrganizationPermissionManagement() {
   const { hasPermission, isLoading: isPermissionLoading } = useMembershipPermissions();
   const canRead = hasPermission(MODULE_PERMISSIONS.organizationScopeView);
@@ -180,13 +109,8 @@ export default function OrganizationPermissionManagement() {
   const [tree, setTree] = useState<OrganizationUnit[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [users, setUsers] = useState<MembershipUser[]>([]);
-  const [roles, setRoles] = useState<Role[]>([]);
   const [mappings, setMappings] = useState<UserDepartmentMapping[]>([]);
   const [managerRelations, setManagerRelations] = useState<ManagerRelation[]>([]);
-  const [policies, setPolicies] = useState<DataPermissionPolicy[]>([]);
-  const [rowRules, setRowRules] = useState<RowPermissionRule[]>([]);
-  const [fieldRules, setFieldRules] = useState<FieldPermissionRule[]>([]);
-  const [maskingRules, setMaskingRules] = useState<MaskingRule[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [dialogMode, setDialogMode] = useState<DialogMode | null>(null);
   const [selectedUnit, setSelectedUnit] = useState<OrganizationUnit | null>(null);
@@ -196,10 +120,6 @@ export default function OrganizationPermissionManagement() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [mappingForm, setMappingForm] = useState<UserDepartmentMappingPayload>(MAPPING_EMPTY);
   const [managerForm, setManagerForm] = useState<ManagerRelationPayload>(MANAGER_EMPTY);
-  const [policyForm, setPolicyForm] = useState<DataPermissionPolicyPayload>(POLICY_EMPTY);
-  const [rowRuleForm, setRowRuleForm] = useState<RowPermissionRulePayload>(ROW_RULE_EMPTY);
-  const [fieldRuleForm, setFieldRuleForm] = useState<FieldPermissionRulePayload>(FIELD_RULE_EMPTY);
-  const [maskingRuleForm, setMaskingRuleForm] = useState<MaskingRulePayload>(MASKING_RULE_EMPTY);
 
   const flatTreeRows = useMemo(() => flattenTree(tree), [tree]);
   const unitManagerScopeId = selectedUnit?.id ?? unitForm.parentId ?? unitForm.companyId ?? "";
@@ -224,39 +144,24 @@ export default function OrganizationPermissionManagement() {
         treeRows,
         positionRows,
         userRows,
-        roleRows,
         mappingRows,
         managerRows,
-        policyRows,
-        rowRuleRows,
-        fieldRuleRows,
-        maskingRuleRows,
       ] = await Promise.all([
         fetchOrganizationUnits(),
         fetchOrganizationTree(),
         fetchPositions(),
         fetchMembershipUsers({ page: 1, pageSize: 200 }),
-        fetchRoles(),
         fetchUserDepartmentMappings(),
         fetchManagerRelations(),
-        fetchDataPolicies(),
-        fetchRowRules(),
-        fetchFieldRules(),
-        fetchMaskingRules(),
       ]);
       setUnits(unitRows);
       setTree(treeRows);
       setPositions(positionRows);
       setUsers(userRows.users);
-      setRoles(roleRows);
       setMappings(mappingRows);
       setManagerRelations(managerRows);
-      setPolicies(policyRows);
-      setRowRules(rowRuleRows);
-      setFieldRules(fieldRuleRows);
-      setMaskingRules(maskingRuleRows);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "讀取組織資料權限失敗");
+      toast.error(error instanceof Error ? error.message : "讀取組織資料失敗");
     } finally {
       setIsLoading(false);
     }
@@ -399,70 +304,6 @@ export default function OrganizationPermissionManagement() {
     }
   }
 
-  async function submitPolicy(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!canAdd) {
-      toast.error("目前帳號沒有 organization-scope.add 權限。");
-      return;
-    }
-    try {
-      await saveDataPolicy(policyForm);
-      toast.success("已儲存 Data Scope 設定");
-      closeDialog();
-      await loadAll();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "儲存 Data Scope 失敗");
-    }
-  }
-
-  async function submitRowRule(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!canAdd) {
-      toast.error("目前帳號沒有 organization-scope.add 權限。");
-      return;
-    }
-    try {
-      await createRowRule(rowRuleForm);
-      toast.success("已建立 Row-level Permission");
-      closeDialog();
-      await loadAll();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "建立 Row-level Permission 失敗");
-    }
-  }
-
-  async function submitFieldRule(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!canAdd) {
-      toast.error("目前帳號沒有 organization-scope.add 權限。");
-      return;
-    }
-    try {
-      await saveFieldRule(fieldRuleForm);
-      toast.success("已儲存 Field-level Permission");
-      closeDialog();
-      await loadAll();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "儲存 Field-level Permission 失敗");
-    }
-  }
-
-  async function submitMaskingRule(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!canAdd) {
-      toast.error("目前帳號沒有 organization-scope.add 權限。");
-      return;
-    }
-    try {
-      await saveMaskingRule(maskingRuleForm);
-      toast.success("已儲存 Sensitive Data Masking");
-      closeDialog();
-      await loadAll();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "儲存 Sensitive Data Masking 失敗");
-    }
-  }
-
   const unitColumns: GridColDef<OrganizationUnit>[] = [
     {
       field: "name",
@@ -498,7 +339,7 @@ export default function OrganizationPermissionManagement() {
     { field: "name", headerName: "職位名稱", minWidth: 180, flex: 1 },
     { field: "level", headerName: "職等", minWidth: 90 },
     { field: "userCount", headerName: "人數", minWidth: 90 },
-    { field: "status", headerName: "狀態", minWidth: 100 },
+    { field: "status", headerName: "狀態", minWidth: 100, renderCell: (params) => <div className="flex h-full items-center"><MembershipStatusChip status={params.row.status} /></div> },
     {
       field: "actions",
       headerName: "操作",
@@ -534,7 +375,7 @@ export default function OrganizationPermissionManagement() {
     { field: "employeeDisplayName", headerName: "Employee", minWidth: 170, flex: 0.8 },
     { field: "organizationName", headerName: "組織", minWidth: 180, flex: 0.8 },
     { field: "relationType", headerName: "關係", minWidth: 110 },
-    { field: "status", headerName: "狀態", minWidth: 100 },
+    { field: "status", headerName: "狀態", minWidth: 100, renderCell: (params) => <div className="flex h-full items-center"><MembershipStatusChip status={params.row.status} /></div> },
     {
       field: "actions",
       headerName: "操作",
@@ -542,23 +383,6 @@ export default function OrganizationPermissionManagement() {
       sortable: false,
       renderCell: (params: GridRenderCellParams<ManagerRelation>) => canDelete ? (
         <IconButton title="刪除" danger onClick={() => void deleteManagerRelation(params.row.id).then(loadAll).catch((error) => toast.error(error.message))}><Trash2 className="h-4 w-4" /></IconButton>
-      ) : null,
-    },
-  ];
-
-  const policyColumns: GridColDef<DataPermissionPolicy>[] = [
-    { field: "resourceCode", headerName: "Resource", minWidth: 170, flex: 0.7 },
-    { field: "subjectName", headerName: "Subject", minWidth: 170, flex: 0.8 },
-    { field: "subjectType", headerName: "類型", minWidth: 100 },
-    { field: "dataScope", headerName: "Data Scope", minWidth: 170 },
-    { field: "status", headerName: "狀態", minWidth: 100 },
-    {
-      field: "actions",
-      headerName: "操作",
-      minWidth: 90,
-      sortable: false,
-      renderCell: (params: GridRenderCellParams<DataPermissionPolicy>) => canDelete ? (
-        <IconButton title="刪除" danger onClick={() => void deleteDataPolicy(params.row.id).then(loadAll).catch((error) => toast.error(error.message))}><Trash2 className="h-4 w-4" /></IconButton>
       ) : null,
     },
   ];
@@ -574,8 +398,8 @@ export default function OrganizationPermissionManagement() {
       <div className="grid h-full min-h-0 grid-rows-[auto_auto_minmax(0,1fr)] gap-4 px-5 py-5 md:px-7">
         <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-[#12344a]">組織與資料權限</h1>
-            <p className="mt-1 text-sm text-[#5d7b90]">管理 Company、Department、Team、Position、資料範圍與欄列遮罩規則。</p>
+            <h1 className="text-2xl font-semibold text-[#12344a]">組織管理</h1>
+            <p className="mt-1 text-sm text-[#5d7b90]">管理 Company、Department、Team、Position、部門對應與主管關係。</p>
           </div>
           <Button variant="outline" onClick={() => void loadAll()}>重新整理</Button>
         </section>
@@ -608,7 +432,7 @@ export default function OrganizationPermissionManagement() {
               title="Organization Tree"
               action={canAdd ? <Button onClick={() => openUnit()} className="bg-indigo-600 text-white hover:bg-indigo-700"><Plus className="h-4 w-4" />新增組織</Button> : null}
             >
-              <DataGrid rows={flatTreeRows} columns={unitColumns} loading={isLoading} disableRowSelectionOnClick />
+              <DataGrid rows={flatTreeRows} columns={unitColumns} loading={isLoading} disableRowSelectionOnClick pageSizeOptions={[10, 20, 50]} initialState={{ pagination: { paginationModel: { page: 0, pageSize: 10 } } }} />
             </Panel>
           ) : null}
 
@@ -617,7 +441,7 @@ export default function OrganizationPermissionManagement() {
               title="Position"
               action={canAdd ? <Button onClick={() => openPosition()} className="bg-indigo-600 text-white hover:bg-indigo-700"><Plus className="h-4 w-4" />新增職位</Button> : null}
             >
-              <DataGrid rows={positions} columns={positionColumns} loading={isLoading} disableRowSelectionOnClick />
+              <DataGrid rows={positions} columns={positionColumns} loading={isLoading} disableRowSelectionOnClick pageSizeOptions={[10, 20, 50]} initialState={{ pagination: { paginationModel: { page: 0, pageSize: 10 } } }} />
             </Panel>
           ) : null}
 
@@ -626,7 +450,7 @@ export default function OrganizationPermissionManagement() {
               title="User Department Mapping"
               action={canAdd ? <Button onClick={() => { setMappingForm(MAPPING_EMPTY); setDialogMode("mapping"); }} className="bg-indigo-600 text-white hover:bg-indigo-700"><Plus className="h-4 w-4" />新增 Mapping</Button> : null}
             >
-              <DataGrid rows={mappings} columns={mappingColumns} loading={isLoading} disableRowSelectionOnClick />
+              <DataGrid rows={mappings} columns={mappingColumns} loading={isLoading} disableRowSelectionOnClick pageSizeOptions={[10, 20, 50]} initialState={{ pagination: { paginationModel: { page: 0, pageSize: 10 } } }} />
             </Panel>
           ) : null}
 
@@ -635,26 +459,10 @@ export default function OrganizationPermissionManagement() {
               title="Manager / Employee"
               action={canAdd ? <Button onClick={() => { setManagerForm(MANAGER_EMPTY); setDialogMode("manager"); }} className="bg-indigo-600 text-white hover:bg-indigo-700"><Plus className="h-4 w-4" />新增關係</Button> : null}
             >
-              <DataGrid rows={managerRelations} columns={managerColumns} loading={isLoading} disableRowSelectionOnClick />
+              <DataGrid rows={managerRelations} columns={managerColumns} loading={isLoading} disableRowSelectionOnClick pageSizeOptions={[10, 20, 50]} initialState={{ pagination: { paginationModel: { page: 0, pageSize: 10 } } }} />
             </Panel>
           ) : null}
 
-          {tab === "policies" ? (
-            <Panel
-              title="Data Scope"
-              action={canAdd ? <Button onClick={() => { setPolicyForm(POLICY_EMPTY); setDialogMode("policy"); }} className="bg-indigo-600 text-white hover:bg-indigo-700"><Plus className="h-4 w-4" />新增 Scope</Button> : null}
-            >
-              <DataGrid rows={policies} columns={policyColumns} loading={isLoading} disableRowSelectionOnClick />
-            </Panel>
-          ) : null}
-
-          {tab === "rules" ? (
-            <div className="grid h-full min-h-0 gap-4 lg:grid-cols-3">
-              <RulePanel title="Row-level Permission" rows={rowRules} canAdd={canAdd} canDelete={canDelete} onAdd={() => { setRowRuleForm(ROW_RULE_EMPTY); setDialogMode("row"); }} onDelete={(id) => void deleteRowRule(id).then(loadAll).catch((error) => toast.error(error.message))} />
-              <RulePanel title="Field-level Permission" rows={fieldRules} canAdd={canAdd} canDelete={canDelete} onAdd={() => { setFieldRuleForm(FIELD_RULE_EMPTY); setDialogMode("field"); }} onDelete={(id) => void deleteFieldRule(id).then(loadAll).catch((error) => toast.error(error.message))} />
-              <RulePanel title="Sensitive Data Masking" rows={maskingRules} canAdd={canAdd} canDelete={canDelete} onAdd={() => { setMaskingRuleForm(MASKING_RULE_EMPTY); setDialogMode("masking"); }} onDelete={(id) => void deleteMaskingRule(id).then(loadAll).catch((error) => toast.error(error.message))} />
-            </div>
-          ) : null}
         </section>
       </div>
 
@@ -747,146 +555,7 @@ export default function OrganizationPermissionManagement() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={dialogMode === "policy"} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader><DialogTitle>Data Scope 設定</DialogTitle></DialogHeader>
-          {/* NOTE: 目前資料權限設定只會寫入 policy/rule/masking tables，尚未套用到其他業務 API 的資料過濾或遮罩。 */}
-          <form className="grid gap-4 md:grid-cols-2" onSubmit={submitPolicy}>
-            <Field label="Subject Type"><Select value={policyForm.subjectType} onChange={(value) => setPolicyForm({ ...policyForm, subjectType: value as "ROLE" | "USER", subjectId: "" })} options={[["ROLE", "Role"], ["USER", "User"]]} /></Field>
-            <Field label="Subject"><Select value={policyForm.subjectId} onChange={(value) => setPolicyForm({ ...policyForm, subjectId: value })} options={policyForm.subjectType === "ROLE" ? roleOptions(roles, "請選擇") : userOptions(users, "請選擇")} required /></Field>
-            <Field label="Resource"><Input value={policyForm.resourceCode} onChange={(event) => setPolicyForm({ ...policyForm, resourceCode: event.target.value })} required /></Field>
-            <Field label="Data Scope"><Select value={policyForm.dataScope} onChange={(value) => setPolicyForm({ ...policyForm, dataScope: value as DataScope })} options={DATA_SCOPE_OPTIONS.map((item) => [item.value, item.label])} /></Field>
-            <Field label="Custom Scope">
-              <select
-                multiple
-                className="min-h-28 rounded-md border px-3 py-2 text-sm"
-                value={policyForm.customScope}
-                onChange={(event) => setPolicyForm({ ...policyForm, customScope: Array.from(event.target.selectedOptions).map((option) => option.value) })}
-              >
-                {units.map((unit) => <option key={unit.id} value={unit.id}>{unit.name}</option>)}
-              </select>
-            </Field>
-            <Field label="狀態"><StatusSelect value={policyForm.status} onChange={(status) => setPolicyForm({ ...policyForm, status })} /></Field>
-            <JsonField label="Row Rule JSON" value={policyForm.rowRule} onChange={(value) => setPolicyForm({ ...policyForm, rowRule: value })} />
-            <JsonField label="Field Rule JSON" value={policyForm.fieldRule} onChange={(value) => setPolicyForm({ ...policyForm, fieldRule: value })} />
-            <JsonField label="Masking Rule JSON" value={policyForm.maskingRule} onChange={(value) => setPolicyForm({ ...policyForm, maskingRule: value })} />
-            <DialogActions onCancel={closeDialog} className="md:col-span-2" />
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      <RuleDialogs
-        dialogMode={dialogMode}
-        closeDialog={closeDialog}
-        policies={policies}
-        rowRuleForm={rowRuleForm}
-        setRowRuleForm={setRowRuleForm}
-        submitRowRule={submitRowRule}
-        fieldRuleForm={fieldRuleForm}
-        setFieldRuleForm={setFieldRuleForm}
-        submitFieldRule={submitFieldRule}
-        maskingRuleForm={maskingRuleForm}
-        setMaskingRuleForm={setMaskingRuleForm}
-        submitMaskingRule={submitMaskingRule}
-      />
     </main>
-  );
-}
-
-function RuleDialogs(props: {
-  dialogMode: DialogMode | null;
-  closeDialog: () => void;
-  policies: DataPermissionPolicy[];
-  rowRuleForm: RowPermissionRulePayload;
-  setRowRuleForm: (value: RowPermissionRulePayload) => void;
-  submitRowRule: (event: FormEvent<HTMLFormElement>) => Promise<void>;
-  fieldRuleForm: FieldPermissionRulePayload;
-  setFieldRuleForm: (value: FieldPermissionRulePayload) => void;
-  submitFieldRule: (event: FormEvent<HTMLFormElement>) => Promise<void>;
-  maskingRuleForm: MaskingRulePayload;
-  setMaskingRuleForm: (value: MaskingRulePayload) => void;
-  submitMaskingRule: (event: FormEvent<HTMLFormElement>) => Promise<void>;
-}) {
-  const policyOptions: Array<[string, string]> = props.policies.map((policy) => [
-    policy.id,
-    `${policy.resourceCode} / ${policy.subjectName ?? policy.subjectId}`,
-  ]);
-  return (
-    <>
-      <Dialog open={props.dialogMode === "row"} onOpenChange={(open) => !open && props.closeDialog()}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Row-level Permission</DialogTitle></DialogHeader>
-          <form className="grid gap-4" onSubmit={props.submitRowRule}>
-            <Field label="Policy"><Select value={props.rowRuleForm.policyId} onChange={(value) => props.setRowRuleForm({ ...props.rowRuleForm, policyId: value })} options={[["", "請選擇"], ...policyOptions]} required /></Field>
-            <Field label="Resource"><Input value={props.rowRuleForm.resourceCode} onChange={(event) => props.setRowRuleForm({ ...props.rowRuleForm, resourceCode: event.target.value })} required /></Field>
-            <Field label="Rule Name"><Input value={props.rowRuleForm.ruleName} onChange={(event) => props.setRowRuleForm({ ...props.rowRuleForm, ruleName: event.target.value })} required /></Field>
-            <JsonField label="Expression JSON" value={props.rowRuleForm.expression} onChange={(value) => props.setRowRuleForm({ ...props.rowRuleForm, expression: value })} />
-            <DialogActions onCancel={props.closeDialog} />
-          </form>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={props.dialogMode === "field"} onOpenChange={(open) => !open && props.closeDialog()}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Field-level Permission</DialogTitle></DialogHeader>
-          <form className="grid gap-4" onSubmit={props.submitFieldRule}>
-            <Field label="Policy"><Select value={props.fieldRuleForm.policyId} onChange={(value) => props.setFieldRuleForm({ ...props.fieldRuleForm, policyId: value })} options={[["", "請選擇"], ...policyOptions]} required /></Field>
-            <Field label="Resource"><Input value={props.fieldRuleForm.resourceCode} onChange={(event) => props.setFieldRuleForm({ ...props.fieldRuleForm, resourceCode: event.target.value })} required /></Field>
-            <Field label="Field"><Input value={props.fieldRuleForm.fieldName} onChange={(event) => props.setFieldRuleForm({ ...props.fieldRuleForm, fieldName: event.target.value })} required /></Field>
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={props.fieldRuleForm.canRead} onChange={(event) => props.setFieldRuleForm({ ...props.fieldRuleForm, canRead: event.target.checked })} />可讀</label>
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={props.fieldRuleForm.canWrite} onChange={(event) => props.setFieldRuleForm({ ...props.fieldRuleForm, canWrite: event.target.checked })} />可寫</label>
-            <DialogActions onCancel={props.closeDialog} />
-          </form>
-        </DialogContent>
-      </Dialog>
-      <Dialog open={props.dialogMode === "masking"} onOpenChange={(open) => !open && props.closeDialog()}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Sensitive Data Masking</DialogTitle></DialogHeader>
-          <form className="grid gap-4" onSubmit={props.submitMaskingRule}>
-            <Field label="Policy"><Select value={props.maskingRuleForm.policyId} onChange={(value) => props.setMaskingRuleForm({ ...props.maskingRuleForm, policyId: value })} options={[["", "請選擇"], ...policyOptions]} required /></Field>
-            <Field label="Resource"><Input value={props.maskingRuleForm.resourceCode} onChange={(event) => props.setMaskingRuleForm({ ...props.maskingRuleForm, resourceCode: event.target.value })} required /></Field>
-            <Field label="Field"><Input value={props.maskingRuleForm.fieldName} onChange={(event) => props.setMaskingRuleForm({ ...props.maskingRuleForm, fieldName: event.target.value })} required /></Field>
-            <Field label="Masking Type"><Input value={props.maskingRuleForm.maskingType} onChange={(event) => props.setMaskingRuleForm({ ...props.maskingRuleForm, maskingType: event.target.value })} /></Field>
-            <Field label="Pattern"><Input value={props.maskingRuleForm.maskingPattern} onChange={(event) => props.setMaskingRuleForm({ ...props.maskingRuleForm, maskingPattern: event.target.value })} /></Field>
-            <DialogActions onCancel={props.closeDialog} />
-          </form>
-        </DialogContent>
-      </Dialog>
-    </>
-  );
-}
-
-function RulePanel({
-  title,
-  rows,
-  canAdd,
-  canDelete,
-  onAdd,
-  onDelete,
-}: {
-  title: string;
-  rows: Array<{ id: string; resourceCode: string; status: string }>;
-  canAdd: boolean;
-  canDelete: boolean;
-  onAdd: () => void;
-  onDelete: (id: string) => void;
-}) {
-  const columns: GridColDef[] = [
-    { field: "resourceCode", headerName: "Resource", minWidth: 150, flex: 1 },
-    { field: "status", headerName: "狀態", minWidth: 90 },
-    {
-      field: "actions",
-      headerName: "",
-      minWidth: 70,
-      sortable: false,
-      renderCell: (params) => canDelete ? (
-        <IconButton title="刪除" danger onClick={() => onDelete(String(params.row.id))}><Trash2 className="h-4 w-4" /></IconButton>
-      ) : null,
-    },
-  ];
-  return (
-    <Panel title={title} action={canAdd ? <Button onClick={onAdd} className="bg-indigo-600 text-white hover:bg-indigo-700"><Plus className="h-4 w-4" />新增</Button> : null}>
-      <DataGrid rows={rows} columns={columns} disableRowSelectionOnClick />
-    </Panel>
   );
 }
 
@@ -939,27 +608,6 @@ function StatusSelect({ value, onChange }: { value: Status; onChange: (status: S
   return <Select value={value} onChange={(next) => onChange(next as Status)} options={[["ACTIVE", "啟用"], ["INACTIVE", "停用"]]} />;
 }
 
-function JsonField({ label, value, onChange }: { label: string; value: Record<string, unknown>; onChange: (value: Record<string, unknown>) => void }) {
-  const [text, setText] = useState(JSON.stringify(value, null, 2));
-  return (
-    <label className="grid gap-1.5 text-sm font-medium text-slate-700 md:col-span-2">
-      {label}
-      <textarea
-        className="min-h-24 rounded-md border px-3 py-2 font-mono text-xs"
-        value={text}
-        onChange={(event) => {
-          const nextText = event.target.value;
-          setText(nextText);
-          try {
-            onChange(JSON.parse(nextText) as Record<string, unknown>);
-          } catch {
-          }
-        }}
-      />
-    </label>
-  );
-}
-
 function IconButton({ title, onClick, danger = false, children }: { title: string; onClick: () => void; danger?: boolean; children: ReactNode }) {
   return (
     <Tooltip title={title} arrow placement="top">
@@ -982,8 +630,8 @@ function AccessDenied() {
   return (
     <main className="grid h-full place-items-center bg-[#f8fcff] p-6">
       <div className="max-w-md rounded-lg border border-[#d6e8f4] bg-white p-6 text-center">
-        <div className="text-lg font-semibold text-[#12344a]">沒有組織資料權限</div>
-        <p className="mt-2 text-sm leading-6 text-[#5d7b90]">需要 organization-scope.view 權限才能檢視組織與資料權限設定。</p>
+        <div className="text-lg font-semibold text-[#12344a]">沒有組織管理權限</div>
+        <p className="mt-2 text-sm leading-6 text-[#5d7b90]">需要 organization-scope.view 權限才能檢視組織管理設定。</p>
       </div>
     </main>
   );
@@ -1019,10 +667,6 @@ function getOrganizationAndChildIds(units: OrganizationUnit[], organizationId: s
     if (unit.id === organizationId || unit.path.startsWith(pathPrefix)) ids.add(unit.id);
   });
   return ids;
-}
-
-function roleOptions(roles: Role[], emptyLabel: string): Array<[string, string]> {
-  return [["", emptyLabel], ...roles.map((role) => [role.id, role.name] as [string, string])];
 }
 
 function flattenTree(units: OrganizationUnit[]): OrganizationUnit[] {

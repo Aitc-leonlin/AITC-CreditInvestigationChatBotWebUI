@@ -47,12 +47,13 @@ export default function NotificationManagement() {
       <div className="mx-auto max-w-6xl px-5 py-6 md:px-8">
         <section className="mb-5">
           <div className="text-xs font-semibold uppercase text-indigo-600">Notifications</div>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-950">通知管理</h1>
+          {/* TEMPORARY: 實際寄信服務尚未完成，此紅色標示為權宜處理，完成 mail worker 後移除。 */}
+          <h1 className="mt-1 text-2xl font-semibold text-rose-700">通知管理(尚未完成)</h1>
           <p className="mt-2 text-sm leading-6 text-slate-600">Email 通知範本、通知 outbox 與發送狀態管理。</p>
         </section>
 
         <section className="mb-5 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="mb-3 text-sm font-semibold text-slate-950">Email 通知範本</h2>
+          <h2 className="mb-3 text-sm font-semibold text-rose-700">Email 通知範本(尚未完成)</h2>
           <div className="grid gap-3 md:grid-cols-2">
             {templates.map((template) => (
               <div key={template.id} className="rounded-md border border-slate-200 p-3">

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { Chip, Tooltip } from "@mui/material";
+import { Tooltip } from "@mui/material";
 import { DataGrid, type GridColDef, type GridRenderCellParams } from "@mui/x-data-grid";
 import { ChevronDown, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import MembershipStatusChip from "@/components/membership/MembershipStatusChip";
 import {
   createRole,
   deleteRole,
@@ -257,7 +258,7 @@ export default function RoleManagement() {
         minWidth: 100,
         renderCell: (params: GridRenderCellParams<Role>) => (
           <div className="flex h-full items-center">
-            <Chip label={params.row.status === "ACTIVE" ? "啟用" : "停用"} size="small" />
+            <MembershipStatusChip status={params.row.status} />
           </div>
         ),
       },
@@ -307,7 +308,7 @@ export default function RoleManagement() {
           ) : null}
         </section>
         <section className="min-h-0 flex-1 overflow-hidden rounded-lg border border-[#d6e8f4] bg-white">
-          <DataGrid rows={roles} columns={columns} loading={isLoading} disableRowSelectionOnClick getRowHeight={() => 58} />
+          <DataGrid rows={roles} columns={columns} loading={isLoading} disableRowSelectionOnClick getRowHeight={() => 58} pageSizeOptions={[10, 20, 50]} initialState={{ pagination: { paginationModel: { page: 0, pageSize: 10 } } }} />
         </section>
       </div>
 

@@ -727,9 +727,9 @@ export function WarehouseDataManager() {
                 }}
                 paginationMode="server"
                 paginationModel={paginationModel}
-                onPaginationModelChange={setPaginationModel}
+                onPaginationModelChange={(nextModel) => setPaginationModel((current) => ({ ...nextModel, page: nextModel.pageSize !== current.pageSize ? 0 : nextModel.page }))}
                 rowCount={rowCount}
-                pageSizeOptions={[5, 10, 25, { value: -1, label: 'All' }]}
+                pageSizeOptions={[5, 10, 25, 50]}
                 localeText={{
                   noRowsLabel: "目前沒有符合條件的資料",
                 }}

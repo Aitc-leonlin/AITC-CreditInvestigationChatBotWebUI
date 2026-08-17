@@ -36,7 +36,8 @@ export default function ForgotPasswordPage() {
             <Mail className="h-5 w-5" />
           </span>
           <div>
-            <h1 className="text-xl font-semibold text-[#12344a]">忘記密碼</h1>
+            {/* TEMPORARY: 實際寄送重設密碼信尚未完成，此標示為權宜處理，完成後移除。 */}
+            <h1 className="text-xl font-semibold text-rose-700">忘記密碼(尚未完成)</h1>
             <p className="text-sm text-[#5d7b90]">建立密碼重設請求。</p>
           </div>
         </div>

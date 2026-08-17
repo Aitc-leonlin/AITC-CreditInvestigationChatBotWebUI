@@ -38,7 +38,8 @@ export default function VerifyEmailPage() {
             <BadgeCheck className="h-5 w-5" />
           </span>
           <div>
-            <h1 className="text-xl font-semibold text-[#12344a]">Email 驗證</h1>
+            {/* TEMPORARY: 驗證信寄送尚未完成，目前僅能手動輸入 token；完成後移除此權宜標示。 */}
+            <h1 className="text-xl font-semibold text-rose-700">Email 驗證(尚未完成)</h1>
             <p className="text-sm text-[#5d7b90]">輸入 verification token 完成驗證。</p>
           </div>
         </div>

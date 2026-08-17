@@ -253,7 +253,9 @@ export default function PermissionManagement() {
                 sorting: {
                   sortModel: [{ field: "name", sort: "asc" }],
                 },
+                pagination: { paginationModel: { page: 0, pageSize: 10 } },
               }}
+              pageSizeOptions={[10, 20, 50]}
             />
           </Panel>
         </section>

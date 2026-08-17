@@ -524,9 +524,9 @@ function ReportHistoryContent() {
                 }}
                 paginationMode={isServerPaginated ? "server" : "client"}
                 paginationModel={paginationModel}
-                onPaginationModelChange={setPaginationModel}
+                onPaginationModelChange={(nextModel) => setPaginationModel((current) => ({ ...nextModel, page: nextModel.pageSize !== current.pageSize ? 0 : nextModel.page }))}
                 rowCount={isServerPaginated ? rowCount : undefined}
-                pageSizeOptions={[5, 10, 25, { value: -1, label: 'All' }]}
+                pageSizeOptions={[5, 10, 25, 50]}
                 localeText={{
                   noRowsLabel: "目前沒有符合條件的歷史報告",
                 }}

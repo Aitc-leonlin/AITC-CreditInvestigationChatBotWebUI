@@ -75,10 +75,11 @@ const AUDIT_ACTION_GROUPS: Array<{ module: string; options: AuditActionOption[] 
       { id: "member-reset-password", label: "重設密碼", actions: ["membership.user.password.reset"] },
       { id: "member-role-crud", label: "角色 CRUD", actions: ["membership.role.create", "membership.role.update", "membership.role.delete", "membership.role.permissions.update"] },
       { id: "member-batch-roles", label: "批次指派角色", actions: ["membership.user_roles.batch_assign"] },
-      { id: "member-organization", label: "組織／資料範圍", actions: ["membership.organization_scope.change"] },
-      { id: "member-masking", label: "資料遮罩規則", actions: ["membership.data_masking.change"] },
+      { id: "member-organization", label: "組織管理", actions: ["membership.organization_scope.change"] },
       { id: "member-notification", label: "通知範本修改", actions: ["membership.notification_template.update"] },
       { id: "member-audit-retention", label: "Audit Log 保留天數修改", actions: ["membership.audit_retention.update"] },
+      { id: "member-group-crud", label: "群組新增／編輯／刪除", actions: ["membership.group.create", "membership.group.update", "membership.group.delete"] },
+      { id: "member-group-members", label: "群組成員異動", actions: ["membership.group.member.add", "membership.group.member.delete"] },
     ],
   },
 ];
