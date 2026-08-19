@@ -14,7 +14,6 @@ import {
   BarChart3,
   CalendarClock,
   DollarSign,
-  Download,
   Eye,
   Search,
   ShieldCheck,
@@ -46,7 +45,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
-  downloadReportHistoryDocument,
   fetchReportDashboard,
   fetchReportHistory,
 } from "@/services/api/reportGeneratorApi";
@@ -167,15 +165,16 @@ function DashboardMetricCard(props: { item: ReportDashboardMetric }) {
   );
 }
 
-async function downloadHistoricalReport(report: HistoricalReport) {
-  const documentResult = await downloadReportHistoryDocument(report);
-  const downloadUrl = URL.createObjectURL(documentResult.blob);
-  const link = document.createElement("a");
-  link.href = downloadUrl;
-  link.download = documentResult.filename;
-  link.click();
-  URL.revokeObjectURL(downloadUrl);
-}
+// TODO: 歷史報告下載功能尚未完成，待後端串接雲端物件儲存後恢復。
+// async function downloadHistoricalReport(report: HistoricalReport) {
+//   const documentResult = await downloadReportHistoryDocument(report);
+//   const downloadUrl = URL.createObjectURL(documentResult.blob);
+//   const link = document.createElement("a");
+//   link.href = downloadUrl;
+//   link.download = documentResult.filename;
+//   link.click();
+//   URL.revokeObjectURL(downloadUrl);
+// }
 
 export default function ReportHistoryPage() {
   return (
@@ -194,7 +193,6 @@ function ReportHistoryContent() {
   const [reportHistory, setReportHistory] = useState<HistoricalReport[]>([]);
   const [isLoadingReports, setIsLoadingReports] = useState(true);
   const [historyError, setHistoryError] = useState("");
-  const [downloadError, setDownloadError] = useState("");
   const [dashboardError, setDashboardError] = useState("");
   const [selectedDashboardReport, setSelectedDashboardReport] =
     useState<HistoricalReport | null>(null);
@@ -379,9 +377,9 @@ function ReportHistoryContent() {
     {
       field: "actions",
       headerName: "操作",
-      width: 188,
-      minWidth: 188,
-      maxWidth: 188,
+      width: 230,
+      minWidth: 230,
+      maxWidth: 230,
       sortable: false,
       filterable: false,
       disableColumnMenu: true,
@@ -407,21 +405,11 @@ function ReportHistoryContent() {
               type="button"
               variant="outline"
               size="sm"
-              className="px-2.5"
-              disabled={disabled}
-              onClick={async () => {
-                try {
-                  setDownloadError("");
-                  await downloadHistoricalReport(params.row);
-                } catch (error) {
-                  setDownloadError(
-                    error instanceof Error ? error.message : "歷史報告下載失敗",
-                  );
-                }
-              }}
+              className="px-2.5 text-slate-500"
+              disabled
+              title="歷史報告下載功能尚未完成"
             >
-              <Download className="h-4 w-4 text-blue-700" />
-              Word
+              尚未完成
             </Button>
           </div>
         );
@@ -442,7 +430,7 @@ function ReportHistoryContent() {
                 歷史報告
               </h1>
               <p className="mt-3 text-sm leading-7 text-slate-600">
-                查看已產生完成的徵審報告，直接重新下載 Word，避免重複等待報告產生流程。
+                查看已產生完成的徵審報告；歷史報告下載功能尚未完成。
               </p>
             </div>
             <div className="pointer-events-none ml-auto hidden flex-1 justify-end text-teal-600/20 md:flex">
@@ -463,9 +451,6 @@ function ReportHistoryContent() {
               ) : null}
               {historyError ? (
                 <p className="mt-2 text-sm font-medium text-red-600">{historyError}</p>
-              ) : null}
-              {downloadError ? (
-                <p className="mt-2 text-sm font-medium text-red-600">{downloadError}</p>
               ) : null}
               {dashboardError ? (
                 <p className="mt-2 text-sm font-medium text-red-600">{dashboardError}</p>

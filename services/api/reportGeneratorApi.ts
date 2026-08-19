@@ -1,6 +1,5 @@
 import type {
   GenerateReportPayload,
-  HistoricalReport,
   ReportDashboard,
   ReportDocumentResult,
   ReportHistoryResult,
@@ -129,15 +128,17 @@ export async function fetchReportDashboardByPath(path: string) {
   };
 }
 
-export async function downloadReportHistoryDocument(report: HistoricalReport) {
-  return readDocumentResponse(
-    await fetchBackendApi(
-      `${BACKEND_API_PATHS.reportGeneratorHistory}/${report.publicId}/download`,
-    ),
-    report.fileName || `${report.id}.docx`,
-    "歷史報告下載失敗",
-  );
-}
+// TODO: 歷史報告下載功能尚未完成。
+// 雲端部署目前不保存 DOCX 實體檔案，待串接物件儲存後再恢復此 API 呼叫。
+// export async function downloadReportHistoryDocument(report: HistoricalReport) {
+//   return readDocumentResponse(
+//     await fetchBackendApi(
+//       `${BACKEND_API_PATHS.reportGeneratorHistory}/${report.publicId}/download`,
+//     ),
+//     report.fileName || `${report.id}.docx`,
+//     "歷史報告下載失敗",
+//   );
+// }
 
 export async function generateReportDocument(payload: GenerateReportPayload) {
   return readDocumentResponse(

@@ -64,7 +64,8 @@ const AUDIT_ACTION_GROUPS: Array<{ module: string; options: AuditActionOption[] 
     options: [
       { id: "report-start", label: "開始產生報告", actions: ["report.generate.started"] },
       { id: "report-complete", label: "完成／失敗", actions: ["report.generate.completed"] },
-      { id: "report-download", label: "歷史報告下載", actions: ["report.history.download"] },
+      // TODO: 歷史報告下載功能尚未完成，待雲端物件儲存串接後恢復篩選項目。
+      // { id: "report-download", label: "歷史報告下載", actions: ["report.history.download"] },
     ],
   },
   {
