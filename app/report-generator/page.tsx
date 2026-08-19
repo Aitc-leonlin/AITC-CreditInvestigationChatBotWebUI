@@ -25,6 +25,7 @@ import {
 import {
   Bar,
   CartesianGrid,
+  Cell,
   ComposedChart,
   Legend,
   Line,
@@ -99,25 +100,25 @@ const reportStatusConfig = {
   idle: {
     label: "待產生",
     Icon: Clock,
-    className: "border border-slate-200 bg-slate-100 text-slate-700",
+    className: "border border-[#D8E1E7] bg-[#F6F8FA] text-[#64748B]",
     iconClassName: "",
   },
   generating: {
     label: "產生中",
     Icon: Loader2,
-    className: "border border-amber-200 bg-amber-100 text-amber-800",
+    className: "border border-[#B07D32]/30 bg-[#B07D32]/10 text-[#B07D32]",
     iconClassName: "animate-spin",
   },
   interrupted: {
     label: "產生中斷",
     Icon: AlertTriangle,
-    className: "border border-rose-200 bg-rose-100 text-rose-800",
+    className: "border border-[#B85450]/30 bg-[#B85450]/10 text-[#B85450]",
     iconClassName: "",
   },
   completed: {
     label: "已產生",
     Icon: FileCheck,
-    className: "border border-emerald-200 bg-emerald-100 text-emerald-800",
+    className: "border border-[#A9C8C3] bg-[#EFF7F5] text-[#28665F]",
     iconClassName: "",
   },
 } as const;
@@ -152,7 +153,7 @@ function formatReportGeneratedAt(date: Date) {
 }
 
 function FieldLabel(props: { children: ReactNode }) {
-  return <label className="text-sm font-semibold text-slate-900">{props.children}</label>;
+  return <label className="text-sm font-semibold text-[#1F2937]">{props.children}</label>;
 }
 
 function SelectField(props: {
@@ -169,7 +170,7 @@ function SelectField(props: {
       >
         {props.children}
       </select>
-      <div className="flex min-h-11 w-full items-center rounded-md border border-slate-300 bg-white px-3 py-2 pr-9 text-sm leading-5 text-slate-900 shadow-sm transition-colors peer-focus:border-teal-500 peer-focus:ring-2 peer-focus:ring-teal-100">
+      <div className="flex min-h-11 w-full items-center rounded-md border border-[#D8E1E7] bg-white px-3 py-2 pr-9 text-sm leading-5 text-[#1F2937] shadow-sm transition-colors peer-focus:border-[#3F8F86] peer-focus:ring-2 peer-focus:ring-[#A9C8C3]/60">
         <span
           className="overflow-hidden"
           style={{
@@ -181,7 +182,7 @@ function SelectField(props: {
           {props.value}
         </span>
       </div>
-      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 z-20 h-4 w-4 -translate-y-1/2 text-slate-500" />
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 z-20 h-4 w-4 -translate-y-1/2 text-[#64748B]" />
     </div>
   );
 }
@@ -195,22 +196,22 @@ function MetricCard(props: { item: ReportDashboardMetric }) {
     <div
       className={`relative h-full rounded-lg border px-5 py-4 shadow-sm ${
         hasCalculationError
-          ? "min-h-[160px] border-rose-200 bg-rose-50/80"
-          : "border-slate-200 bg-white"
+          ? "min-h-[160px] border-[#B85450]/30 bg-[#B85450]/10"
+          : "border-[#D8E1E7] bg-white"
       }`}
     >
       <div className={`flex h-full flex-col ${hasCalculationError ? "min-h-[128px]" : ""}`}>
         <div className="flex min-h-10 items-center gap-3">
           <span
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-              hasCalculationError ? "bg-rose-100 text-rose-700" : "bg-teal-50 text-teal-600"
+              hasCalculationError ? "bg-[#B85450]/15 text-[#B85450]" : "bg-[#EFF7F5] text-[#3F8F86]"
             }`}
           >
             <Icon className="h-5 w-5" />
           </span>
           <div
             className={`min-w-0 text-sm font-medium leading-5 ${
-              hasCalculationError ? "text-rose-800" : "text-slate-700"
+              hasCalculationError ? "text-[#B85450]" : "text-[#64748B]"
             }`}
           >
             {props.item.label}
@@ -223,18 +224,18 @@ function MetricCard(props: { item: ReportDashboardMetric }) {
           <div className="flex flex-1 flex-col justify-center">
             <div
               className={`text-2xl font-semibold leading-tight ${
-                hasCalculationError ? "text-rose-950" : "text-slate-950"
+                hasCalculationError ? "text-[#B85450]" : "text-[#1F2937]"
               }`}
             >
               {props.item.value}
             </div>
             {props.item.calculationReason ? (
-              <div className="mt-2 text-xs font-semibold text-rose-700">計算異常</div>
+              <div className="mt-2 text-xs font-semibold text-[#B85450]">計算異常</div>
             ) : null}
           </div>
           <div
             className={`pt-2 text-xs font-semibold ${
-              hasCalculationError ? "text-rose-700" : "text-emerald-700"
+              hasCalculationError ? "text-[#B85450]" : "text-[#28665F]"
             }`}
           >
             {props.item.trend}
@@ -246,7 +247,7 @@ function MetricCard(props: { item: ReportDashboardMetric }) {
             <div className="group relative">
               <button
                 type="button"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-rose-600 text-white shadow-sm transition-colors hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#B85450] text-white shadow-sm transition-colors hover:bg-[#9F4744] focus:outline-none focus:ring-2 focus:ring-[#B85450]/30"
                 aria-label={`查看${props.item.label}錯誤訊息`}
                 title="查看錯誤訊息"
               >
@@ -254,9 +255,9 @@ function MetricCard(props: { item: ReportDashboardMetric }) {
               </button>
               <div
                 role="tooltip"
-                className="pointer-events-none absolute bottom-9 left-0 z-30 w-[min(280px,calc(100vw-3rem))] translate-y-1 rounded-2xl border-2 border-rose-300 bg-white px-4 py-3 text-sm leading-6 text-rose-950 opacity-0 shadow-[0_14px_35px_rgba(15,23,42,0.18)] transition duration-150 before:absolute before:-bottom-2 before:left-5 before:h-4 before:w-4 before:rotate-45 before:border-b-2 before:border-r-2 before:border-rose-300 before:bg-white group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
+                className="pointer-events-none absolute bottom-9 left-0 z-30 w-[min(280px,calc(100vw-3rem))] translate-y-1 rounded-2xl border-2 border-[#B85450]/40 bg-white px-4 py-3 text-sm leading-6 text-[#1F2937] opacity-0 shadow-[0_14px_35px_rgba(31,41,55,0.16)] transition duration-150 before:absolute before:-bottom-2 before:left-5 before:h-4 before:w-4 before:rotate-45 before:border-b-2 before:border-r-2 before:border-[#B85450]/40 before:bg-white group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
               >
-                <div className="mb-1 text-xs font-semibold text-rose-700">指標計算異常</div>
+                <div className="mb-1 text-xs font-semibold text-[#B85450]">指標計算異常</div>
                 <div className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words pr-1">
                   {props.item.calculationReason}
                 </div>
@@ -440,17 +441,17 @@ function ReportGeneratorContent() {
   }
 
   return (
-    <main className="h-full overflow-y-auto bg-slate-50">
+    <main className="h-full overflow-y-auto bg-[#F6F8FA]">
       <div className="grid min-h-full gap-5 p-5 xl:grid-cols-[352px_minmax(0,1fr)]">
-        <aside className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-6 py-5">
+        <aside className="rounded-lg border border-[#D8E1E7] bg-white shadow-sm">
+          <div className="border-b border-[#D8E1E7] px-6 py-5">
             <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-md bg-teal-600 text-white">
+              <span className="flex h-10 w-10 items-center justify-center rounded-md bg-[#3F8F86] text-white">
                 <FileText className="h-5 w-5" />
               </span>
               <div>
-                <h2 className="text-lg font-semibold text-slate-950">報告條件設定</h2>
-                <p className="mt-1 text-sm text-slate-500">請選擇報告產生條件</p>
+                <h2 className="text-lg font-semibold text-[#1F2937]">報告條件設定</h2>
+                <p className="mt-1 text-sm text-[#64748B]">請選擇報告產生條件</p>
               </div>
             </div>
           </div>
@@ -492,7 +493,7 @@ function ReportGeneratorContent() {
               type="button"
               onClick={generateReport}
               disabled={isGeneratingReport}
-              className="flex h-12 w-full items-center justify-center gap-2 rounded-md bg-teal-600 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-teal-700"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-md bg-[#3F8F86] text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#28665F]"
             >
               {isGeneratingReport ? (
                 <>
@@ -504,11 +505,11 @@ function ReportGeneratorContent() {
               )}
             </button>
             {generationMessage ? (
-              <div className="rounded-md border border-teal-100 bg-teal-50 px-3 py-2 text-center text-xs font-medium text-teal-800">
+              <div className="rounded-md border border-[#A9C8C3] bg-[#EFF7F5] px-3 py-2 text-center text-xs font-medium text-[#28665F]">
                 {generationMessage}
               </div>
             ) : null}
-            <div className="flex items-center justify-center gap-2 text-xs text-slate-500">
+            <div className="flex items-center justify-center gap-2 text-xs text-[#64748B]">
               <Sparkles className="h-4 w-4" />
               報告產生完成後，將自動下載完整報告
             </div>
@@ -516,7 +517,7 @@ function ReportGeneratorContent() {
         </aside>
 
         <section className="min-w-0 space-y-4">
-          <div className="relative rounded-lg border border-slate-200 bg-white p-5 pb-16 shadow-sm">
+          <div className="relative rounded-lg border border-[#D8E1E7] bg-white p-5 pb-16 shadow-sm">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
                 <div className="relative h-[122px] w-[250px] max-w-full shrink-0 overflow-hidden rounded-lg bg-white">
@@ -533,12 +534,12 @@ function ReportGeneratorContent() {
                   ) : null}
                 </div>
                 <div>
-                  <h1 className="text-3xl font-semibold text-slate-950">{selectedCompanyTitle}</h1>
-                  <p className="mt-2 text-xl text-slate-900">
+                  <h1 className="text-3xl font-semibold text-[#1F2937]">{selectedCompanyTitle}</h1>
+                  <p className="mt-2 text-xl text-[#1F2937]">
                     {selectedCompanyFullName}
                   </p>
-                  <p className="mt-1 text-base font-medium text-slate-600">{reportSubtitle}</p>
-                  <div className="mt-4 flex flex-wrap gap-5 text-sm text-slate-600">
+                  <p className="mt-1 text-base font-medium text-[#64748B]">{reportSubtitle}</p>
+                  <div className="mt-4 flex flex-wrap gap-5 text-sm text-[#64748B]">
                     <span className="flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
                       產生時間：{reportGeneratedAt || "-"}
@@ -562,13 +563,13 @@ function ReportGeneratorContent() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.08fr)_minmax(360px,0.92fr)]">
-            <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-950">AI 分析摘要</h2>
-              <div className="mt-4 rounded-lg border border-emerald-100 bg-emerald-50/70 p-4">
+            <section className="rounded-lg border border-[#D8E1E7] bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-[#1F2937]">AI 分析摘要</h2>
+              <div className="mt-4 rounded-lg border border-[#A9C8C3] bg-[#EFF7F5] p-4">
                 <div className="space-y-4">
                   {reportDashboard.summaryItems.map((item) => (
-                    <div key={item} className="flex gap-3 text-sm leading-6 text-slate-900">
-                      <CircleCheck className="mt-0.5 h-5 w-5 shrink-0 fill-emerald-600 text-white" />
+                    <div key={item} className="flex gap-3 text-sm leading-6 text-[#1F2937]">
+                      <CircleCheck className="mt-0.5 h-5 w-5 shrink-0 fill-[#3F8F86] text-white" />
                       <span>{item}</span>
                     </div>
                   ))}
@@ -576,22 +577,22 @@ function ReportGeneratorContent() {
               </div>
             </section>
 
-            <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-950">報告產生進度</h2>
+            <section className="rounded-lg border border-[#D8E1E7] bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-[#1F2937]">報告產生進度</h2>
               <div className="mt-4 space-y-3">
                 {reportDashboard.progressItems.map((item) => {
                   const done = item.status === "完成";
                   const processing = item.status.includes("處理中");
                   return (
                     <div key={item.label} className="grid grid-cols-[auto_1fr_auto] items-center gap-3">
-                      <span className={`flex h-5 w-5 items-center justify-center rounded-full text-white ${done ? "bg-teal-600" : processing ? "bg-amber-500" : "bg-slate-300"}`}>
+                      <span className={`flex h-5 w-5 items-center justify-center rounded-full text-white ${done ? "bg-[#3F8F86]" : processing ? "bg-[#B07D32]" : "bg-[#D8E1E7]"}`}>
                         {done ? <Check className="h-3.5 w-3.5" /> : processing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                       </span>
                       <div className="grid grid-cols-[auto_1fr] items-center gap-4">
-                        <span className="text-sm font-semibold text-slate-800">{item.label}</span>
-                        <span className="h-px bg-slate-200" />
+                        <span className="text-sm font-semibold text-[#1F2937]">{item.label}</span>
+                        <span className="h-px bg-[#D8E1E7]" />
                       </div>
-                      <span className={done ? "text-sm font-semibold text-teal-700" : processing ? "text-sm font-semibold text-amber-600" : "text-sm text-slate-500"}>
+                      <span className={done ? "text-sm font-semibold text-[#28665F]" : processing ? "text-sm font-semibold text-[#B07D32]" : "text-sm text-[#64748B]"}>
                         {item.status}
                       </span>
                     </div>
@@ -599,26 +600,26 @@ function ReportGeneratorContent() {
                 })}
               </div>
               <div className="mt-5 flex items-center gap-4">
-                <div className="h-3 flex-1 overflow-hidden rounded-full bg-slate-200">
+                <div className="h-3 flex-1 overflow-hidden rounded-full bg-[#E5EAEF]">
                   <div
-                    className="h-full rounded-full bg-teal-500 transition-all"
+                    className="h-full rounded-full bg-[#3F8F86] transition-all"
                     style={{ width: `${reportDashboard.progressPercent}%` }}
                   />
                 </div>
-                <span className="text-base font-semibold text-teal-700">
+                <span className="text-base font-semibold text-[#28665F]">
                   {reportDashboard.progressPercent}%
                 </span>
               </div>
             </section>
           </div>
 
-          <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-base font-semibold text-slate-950">{reportDashboard.metricsTitle}</h2>
+          <section className="rounded-lg border border-[#D8E1E7] bg-white p-4 shadow-sm">
+            <h2 className="text-base font-semibold text-[#1F2937]">{reportDashboard.metricsTitle}</h2>
             <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
               {reportDashboard.metrics.length ? reportDashboard.metrics.map((item) => (
                 <MetricCard key={item.label} item={item} />
               )) : (
-                <div className="col-span-full rounded-md border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">
+                <div className="col-span-full rounded-md border border-dashed border-[#D8E1E7] px-4 py-8 text-center text-sm text-[#64748B]">
                   產生報告後將顯示關鍵財務指標。
                 </div>
               )}
@@ -626,12 +627,12 @@ function ReportGeneratorContent() {
           </section>
 
           <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)]">
-            <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-950">報告目錄</h2>
+            <section className="rounded-lg border border-[#D8E1E7] bg-white p-5 shadow-sm">
+              <h2 className="text-lg font-semibold text-[#1F2937]">報告目錄</h2>
               <div className="mt-4 space-y-3">
                 {reportSections.map((section, index) => (
-                  <div key={section} className="flex items-center gap-3 text-sm font-medium text-slate-800">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-teal-600 text-xs font-semibold text-white">
+                  <div key={section} className="flex items-center gap-3 text-sm font-medium text-[#1F2937]">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[#659B94] text-xs font-semibold text-white">
                       {index + 1}
                     </span>
                     <span>{section}</span>
@@ -640,10 +641,10 @@ function ReportGeneratorContent() {
               </div>
             </section>
 
-            <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <section className="rounded-lg border border-[#D8E1E7] bg-white p-5 shadow-sm">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="text-lg font-semibold text-slate-950">財務趨勢圖</h2>
-                <span className="text-xs font-medium text-slate-500">
+                <h2 className="text-lg font-semibold text-[#1F2937]">財務趨勢圖</h2>
+                <span className="text-xs font-medium text-[#64748B]">
                   {trendYearRange} Q1-Q4
                 </span>
               </div>
@@ -657,26 +658,26 @@ function ReportGeneratorContent() {
                       barGap={4}
                       barCategoryGap="16%"
                     >
-                      <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+                      <CartesianGrid stroke="#E5EAEF" strokeDasharray="3 3" vertical={false} />
                       <XAxis
                         dataKey="period"
                         interval={0}
-                        axisLine={{ stroke: "#cbd5e1" }}
+                        axisLine={{ stroke: "#D8E1E7" }}
                         tickLine={false}
-                        tick={{ fill: "#475569", fontSize: 12 }}
+                        tick={{ fill: "#64748B", fontSize: 12 }}
                       />
                       <YAxis
                         yAxisId="amount"
                         width={58}
                         axisLine={false}
                         tickLine={false}
-                        tick={{ fill: "#475569", fontSize: 12 }}
+                        tick={{ fill: "#64748B", fontSize: 12 }}
                         tickFormatter={(value: number) => value.toLocaleString("zh-TW")}
                         label={{
                           value: "億元",
                           angle: -90,
                           position: "insideLeft",
-                          fill: "#475569",
+                          fill: "#64748B",
                           fontSize: 12,
                         }}
                       />
@@ -687,18 +688,18 @@ function ReportGeneratorContent() {
                         domain={[0, 70]}
                         axisLine={false}
                         tickLine={false}
-                        tick={{ fill: "#475569", fontSize: 12 }}
+                        tick={{ fill: "#64748B", fontSize: 12 }}
                         tickFormatter={(value: number) => formatPercent(value)}
                         label={{
                           value: "%",
                           angle: 90,
                           position: "insideRight",
-                          fill: "#475569",
+                          fill: "#64748B",
                           fontSize: 12,
                         }}
                       />
                       <Tooltip
-                        cursor={{ fill: "#f1f5f9" }}
+                        cursor={{ fill: "#F6F8FA" }}
                         formatter={(value, name) => {
                           if (value === null || value === undefined) {
                             return ["-", name];
@@ -712,9 +713,9 @@ function ReportGeneratorContent() {
                           ];
                         }}
                         contentStyle={{
-                          borderColor: "#cbd5e1",
+                          borderColor: "#D8E1E7",
                           borderRadius: 8,
-                          color: "#0f172a",
+                          color: "#1F2937",
                           boxShadow: "0 10px 30px rgba(15, 23, 42, 0.12)",
                         }}
                       />
@@ -728,31 +729,38 @@ function ReportGeneratorContent() {
                         yAxisId="amount"
                         dataKey="revenue"
                         name="營收"
-                        fill="#14b8a6"
+                        fill="#3F8F86"
                         radius={[4, 4, 0, 0]}
                       />
                       <Bar
                         yAxisId="amount"
                         dataKey="netIncome"
                         name="淨利"
-                        fill="#a855f7"
+                        fill="#91AAA6"
                         radius={[4, 4, 0, 0]}
-                      />
+                      >
+                        {financialTrendRows.map((entry) => (
+                          <Cell
+                            key={`net-income-${entry.period}`}
+                            fill={Number(entry.netIncome) < 0 ? "#B85450" : "#91AAA6"}
+                          />
+                        ))}
+                      </Bar>
                       <Line
                         yAxisId="margin"
                         type="monotone"
                         dataKey="grossMargin"
                         name="毛利率"
-                        stroke="#1d4ed8"
+                        stroke="#285C57"
                         strokeWidth={3}
-                        dot={{ r: 4, fill: "#1d4ed8", strokeWidth: 0 }}
-                        activeDot={{ r: 6, fill: "#1d4ed8", stroke: "#ffffff", strokeWidth: 2 }}
+                        dot={{ r: 4, fill: "#285C57", strokeWidth: 0 }}
+                        activeDot={{ r: 6, fill: "#285C57", stroke: "#ffffff", strokeWidth: 2 }}
                       />
                     </ComposedChart>
                     </ResponsiveContainer>
                   </div>
                 ) : (
-                  <div className="flex h-full items-center justify-center rounded-md border border-dashed border-slate-300 px-4 text-center text-sm text-slate-500">
+                  <div className="flex h-full items-center justify-center rounded-md border border-dashed border-[#D8E1E7] px-4 text-center text-sm text-[#64748B]">
                     產生報告後將顯示財務趨勢圖。
                   </div>
                 )}
@@ -762,7 +770,7 @@ function ReportGeneratorContent() {
         </section>
       </div>
 
-      <footer className="border-t border-slate-200 bg-white py-3 text-center text-sm text-slate-700">
+      <footer className="border-t border-[#D8E1E7] bg-white py-3 text-center text-sm text-[#64748B]">
         Copyright © AITC 慶燁科技 All Rights Reserved.
       </footer>
         </main>

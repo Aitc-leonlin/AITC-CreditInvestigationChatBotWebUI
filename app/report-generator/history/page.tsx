@@ -23,6 +23,7 @@ import {
 import {
   Bar,
   CartesianGrid,
+  Cell,
   ComposedChart,
   Legend,
   Line,
@@ -59,9 +60,9 @@ const REPORT_STATUS_STYLE: Record<
   ReportStatus,
   { color: string; backgroundColor: string }
 > = {
-  已完成: { color: "#0f766e", backgroundColor: "#ccfbf1" },
-  產生中: { color: "#92400e", backgroundColor: "#fef3c7" },
-  失敗: { color: "#991b1b", backgroundColor: "#fee2e2" },
+  已完成: { color: "#28665F", backgroundColor: "#EFF7F5" },
+  產生中: { color: "#B07D32", backgroundColor: "#FBF5EA" },
+  失敗: { color: "#B85450", backgroundColor: "#FAEEEE" },
 };
 
 const metricIconMap = {
@@ -93,22 +94,22 @@ function DashboardMetricCard(props: { item: ReportDashboardMetric }) {
     <div
       className={`relative h-full rounded-lg border px-5 py-4 shadow-sm ${
         hasCalculationError
-          ? "min-h-[160px] border-rose-200 bg-rose-50/80"
-          : "border-slate-200 bg-white"
+          ? "min-h-[160px] border-[#B85450]/30 bg-[#B85450]/10"
+          : "border-[#D8E1E7] bg-white"
       }`}
     >
       <div className={`flex h-full flex-col ${hasCalculationError ? "min-h-[128px]" : ""}`}>
         <div className="flex min-h-10 items-center gap-3">
           <span
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-              hasCalculationError ? "bg-rose-100 text-rose-700" : "bg-teal-50 text-teal-600"
+              hasCalculationError ? "bg-[#B85450]/15 text-[#B85450]" : "bg-[#EFF7F5] text-[#3F8F86]"
             }`}
           >
             <Icon className="h-5 w-5" />
           </span>
           <div
             className={`min-w-0 text-sm font-medium leading-5 ${
-              hasCalculationError ? "text-rose-800" : "text-slate-700"
+              hasCalculationError ? "text-[#B85450]" : "text-[#64748B]"
             }`}
           >
             {props.item.label}
@@ -119,18 +120,18 @@ function DashboardMetricCard(props: { item: ReportDashboardMetric }) {
           <div className="flex flex-1 flex-col justify-center">
             <div
               className={`text-2xl font-semibold leading-tight ${
-                hasCalculationError ? "text-rose-950" : "text-slate-950"
+                hasCalculationError ? "text-[#B85450]" : "text-[#1F2937]"
               }`}
             >
               {props.item.value}
             </div>
             {props.item.calculationReason ? (
-              <div className="mt-2 text-xs font-semibold text-rose-700">計算異常</div>
+              <div className="mt-2 text-xs font-semibold text-[#B85450]">計算異常</div>
             ) : null}
           </div>
           <div
             className={`pt-2 text-xs font-semibold ${
-              hasCalculationError ? "text-rose-700" : "text-emerald-700"
+              hasCalculationError ? "text-[#B85450]" : "text-[#28665F]"
             }`}
           >
             {props.item.trend}
@@ -142,7 +143,7 @@ function DashboardMetricCard(props: { item: ReportDashboardMetric }) {
             <div className="group relative">
               <button
                 type="button"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-rose-600 text-white shadow-sm transition-colors hover:bg-rose-700 focus:outline-none focus:ring-2 focus:ring-rose-300"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[#B85450] text-white shadow-sm transition-colors hover:bg-[#9F4744] focus:outline-none focus:ring-2 focus:ring-[#B85450]/30"
                 aria-label={`查看${props.item.label}錯誤訊息`}
                 title="查看錯誤訊息"
               >
@@ -150,9 +151,9 @@ function DashboardMetricCard(props: { item: ReportDashboardMetric }) {
               </button>
               <div
                 role="tooltip"
-                className="pointer-events-none absolute bottom-9 left-0 z-30 w-[min(280px,calc(100vw-3rem))] translate-y-1 rounded-2xl border-2 border-rose-300 bg-white px-4 py-3 text-sm leading-6 text-rose-950 opacity-0 shadow-[0_14px_35px_rgba(15,23,42,0.18)] transition duration-150 before:absolute before:-bottom-2 before:left-5 before:h-4 before:w-4 before:rotate-45 before:border-b-2 before:border-r-2 before:border-rose-300 before:bg-white group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
+                className="pointer-events-none absolute bottom-9 left-0 z-30 w-[min(280px,calc(100vw-3rem))] translate-y-1 rounded-2xl border-2 border-[#B85450]/40 bg-white px-4 py-3 text-sm leading-6 text-[#1F2937] opacity-0 shadow-[0_14px_35px_rgba(31,41,55,0.16)] transition duration-150 before:absolute before:-bottom-2 before:left-5 before:h-4 before:w-4 before:rotate-45 before:border-b-2 before:border-r-2 before:border-[#B85450]/40 before:bg-white group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:translate-y-0 group-focus-within:opacity-100"
               >
-                <div className="mb-1 text-xs font-semibold text-rose-700">指標計算異常</div>
+                <div className="mb-1 text-xs font-semibold text-[#B85450]">指標計算異常</div>
                 <div className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words pr-1">
                   {props.item.calculationReason}
                 </div>
@@ -289,7 +290,7 @@ function ReportHistoryContent() {
       minWidth: 240,
       flex: 1.2,
       renderCell: (params: GridRenderCellParams<HistoricalReport, string>) => (
-        <div className="flex h-full items-center py-3 text-sm font-semibold leading-6 text-slate-900">
+        <div className="flex h-full items-center py-3 text-sm font-semibold leading-6 text-[#1F2937]">
           <div className="whitespace-normal break-words">
             {getReportDisplayName(params.row)}
           </div>
@@ -302,7 +303,7 @@ function ReportHistoryContent() {
       minWidth: 170,
       flex: 0.9,
       renderCell: (params: GridRenderCellParams<HistoricalReport, string>) => (
-        <div className="flex h-full items-center py-3 text-sm leading-6 text-slate-700">
+        <div className="flex h-full items-center py-3 text-sm leading-6 text-[#64748B]">
           <div className="whitespace-normal break-words">{params.row.company}</div>
         </div>
       ),
@@ -319,8 +320,8 @@ function ReportHistoryContent() {
             size="small"
             sx={{
               fontWeight: 700,
-              color: "#0f766e",
-              backgroundColor: "#ccfbf1",
+              color: "#28665F",
+              backgroundColor: "#EFF7F5",
               borderRadius: "999px",
             }}
           />
@@ -333,7 +334,7 @@ function ReportHistoryContent() {
       minWidth: 120,
       flex: 0.55,
       renderCell: (params: GridRenderCellParams<HistoricalReport, string>) => (
-        <div className="flex h-full items-center text-sm text-slate-700">
+        <div className="flex h-full items-center text-sm text-[#64748B]">
           {params.row.year} {params.row.period}
         </div>
       ),
@@ -344,8 +345,8 @@ function ReportHistoryContent() {
       minWidth: 170,
       flex: 0.8,
       renderCell: (params: GridRenderCellParams<HistoricalReport, string>) => (
-        <div className="flex h-full items-center py-3 text-sm leading-6 text-slate-700">
-          <CalendarClock className="mr-2 h-4 w-4 text-slate-400" />
+        <div className="flex h-full items-center py-3 text-sm leading-6 text-[#64748B]">
+          <CalendarClock className="mr-2 h-4 w-4 text-[#659B94]" />
           {params.row.generatedAt}
         </div>
       ),
@@ -398,14 +399,14 @@ function ReportHistoryContent() {
               disabled={disabled}
               onClick={() => openDashboard(params.row)}
             >
-              <Eye className="h-4 w-4 text-teal-700" />
+              <Eye className="h-4 w-4 text-[#28665F]" />
               View
             </Button>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              className="px-2.5 text-slate-500"
+              className="px-2.5 text-[#64748B]"
               disabled
               title="歷史報告下載功能尚未完成"
             >
@@ -418,28 +419,28 @@ function ReportHistoryContent() {
   ];
 
   return (
-    <main className="h-full overflow-y-auto">
+    <main className="h-full overflow-y-auto bg-[#F6F8FA]">
       <div className="mx-auto flex w-full flex-col gap-6 px-4 py-6 md:px-6">
-        <section className="overflow-hidden rounded-3xl border border-border bg-gradient-to-br from-teal-50 via-white to-slate-50 p-6 shadow-sm">
+        <section className="overflow-hidden rounded-3xl border border-[#D8E1E7] bg-gradient-to-br from-[#EFF7F5] via-white to-[#F6F8FA] p-6 shadow-sm">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
-              <div className="text-sm font-semibold tracking-[0.2em] text-teal-700">
+              <div className="text-sm font-semibold tracking-[0.2em] text-[#28665F]">
                 REPORT HISTORY
               </div>
-              <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900">
+              <h1 className="mt-3 text-3xl font-black tracking-tight text-[#1F2937]">
                 歷史報告
               </h1>
-              <p className="mt-3 text-sm leading-7 text-slate-600">
+              <p className="mt-3 text-sm leading-7 text-[#64748B]">
                 查看已產生完成的徵審報告；歷史報告下載功能尚未完成。
               </p>
             </div>
-            <div className="pointer-events-none ml-auto hidden flex-1 justify-end text-teal-600/20 md:flex">
+            <div className="pointer-events-none ml-auto hidden flex-1 justify-end text-[#659B94]/25 md:flex">
               <HistoryEduIcon sx={{ fontSize: "clamp(112px,14vw,180px)" }} />
             </div>
           </div>
         </section>
 
-        <section className="rounded-3xl border border-border bg-background p-6 shadow-sm">
+        <section className="rounded-3xl border border-[#D8E1E7] bg-white p-6 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold">已產生的報告</h2>
@@ -447,13 +448,13 @@ function ReportHistoryContent() {
                 可依狀態、公司、年度、報告名稱與產生人員搜尋歷史報告。
               </p>
               {isLoadingReports ? (
-                <p className="mt-2 text-sm text-slate-500">載入歷史報告中...</p>
+                <p className="mt-2 text-sm text-[#64748B]">載入歷史報告中...</p>
               ) : null}
               {historyError ? (
-                <p className="mt-2 text-sm font-medium text-red-600">{historyError}</p>
+                <p className="mt-2 text-sm font-medium text-[#B85450]">{historyError}</p>
               ) : null}
               {dashboardError ? (
-                <p className="mt-2 text-sm font-medium text-red-600">{dashboardError}</p>
+                <p className="mt-2 text-sm font-medium text-[#B85450]">{dashboardError}</p>
               ) : null}
             </div>
 
@@ -470,7 +471,7 @@ function ReportHistoryContent() {
               </select>
 
               <div className="relative w-full min-w-[260px] sm:w-[340px]">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#659B94]" />
                 <Input
                   value={searchKeyword}
                   onChange={(event) => setSearchKeyword(event.target.value)}
@@ -485,11 +486,21 @@ function ReportHistoryContent() {
             <Box
               sx={{
                 width: "100%",
+                color: "#1F2937",
+                "& .MuiDataGrid-root": {
+                  borderColor: "#D8E1E7",
+                },
                 "& .MuiDataGrid-cell": {
                   alignItems: "stretch",
+                  borderBottomColor: "#E5EAEF",
                 },
                 "& .MuiDataGrid-columnHeaders": {
-                  backgroundColor: "#f8fafc",
+                  backgroundColor: "#F6F8FA",
+                  color: "#64748B",
+                  borderBottomColor: "#D8E1E7",
+                },
+                "& .MuiDataGrid-footerContainer": {
+                  borderTopColor: "#D8E1E7",
                 },
               }}
             >
@@ -532,12 +543,12 @@ function ReportHistoryContent() {
           }
         }}
       >
-        <DialogContent className="max-h-[92vh] w-[calc(100vw-48px)] max-w-7xl overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-0 shadow-2xl">
-          <DialogHeader className="border-b border-slate-200 bg-white px-6 py-5 text-left shadow-sm">
-            <DialogTitle className="text-2xl text-slate-950">
+        <DialogContent className="max-h-[92vh] w-[calc(100vw-48px)] max-w-7xl overflow-hidden rounded-xl border border-[#D8E1E7] bg-[#F6F8FA] p-0 shadow-2xl">
+          <DialogHeader className="border-b border-[#D8E1E7] bg-white px-6 py-5 text-left shadow-sm">
+            <DialogTitle className="text-2xl text-[#1F2937]">
               {selectedDashboardReport ? getReportDisplayName(selectedDashboardReport) : "Dashboard"}
             </DialogTitle>
-            <DialogDescription className="text-slate-600">
+            <DialogDescription className="text-[#64748B]">
               {selectedDashboardReport
                 ? `${selectedDashboardReport.company}｜${selectedDashboardReport.year} ${selectedDashboardReport.period}`
                 : "歷史報告 Dashboard"}
@@ -546,53 +557,53 @@ function ReportHistoryContent() {
 
           <div className="flex max-h-[calc(92vh-96px)] w-full flex-col gap-5 overflow-y-auto px-6 py-6">
             {isDashboardLoading ? (
-              <div className="rounded-lg border border-slate-200 bg-white px-5 py-10 text-center text-sm text-slate-500">
+              <div className="rounded-lg border border-[#D8E1E7] bg-white px-5 py-10 text-center text-sm text-[#64748B]">
                 Dashboard 載入中...
               </div>
             ) : null}
 
             {dashboardError ? (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 px-5 py-4 text-sm font-medium text-rose-700">
+              <div className="rounded-lg border border-[#B85450]/30 bg-[#B85450]/10 px-5 py-4 text-sm font-medium text-[#B85450]">
                 {dashboardError}
               </div>
             ) : null}
 
             {selectedDashboard ? (
               <>
-                <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-                  <h2 className="text-lg font-semibold text-slate-950">AI 分析摘要</h2>
+                <section className="rounded-lg border border-[#D8E1E7] bg-white p-5 shadow-sm">
+                  <h2 className="text-lg font-semibold text-[#1F2937]">AI 分析摘要</h2>
                   <div className="mt-4 grid gap-3 md:grid-cols-2">
                     {selectedDashboard.summaryItems.length ? selectedDashboard.summaryItems.map((item) => (
-                      <div key={item} className="rounded-md border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm leading-6 text-slate-900">
+                      <div key={item} className="rounded-md border border-[#A9C8C3] bg-[#EFF7F5] px-4 py-3 text-sm leading-6 text-[#1F2937]">
                         {item}
                       </div>
                     )) : (
-                      <div className="rounded-md border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500 md:col-span-2">
+                      <div className="rounded-md border border-dashed border-[#D8E1E7] px-4 py-8 text-center text-sm text-[#64748B] md:col-span-2">
                         此報告沒有分析摘要。
                       </div>
                     )}
                   </div>
                 </section>
 
-                <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-                  <h2 className="text-lg font-semibold text-slate-950">
+                <section className="rounded-lg border border-[#D8E1E7] bg-white p-5 shadow-sm">
+                  <h2 className="text-lg font-semibold text-[#1F2937]">
                     {selectedDashboard.metricsTitle || "關鍵財務指標"}
                   </h2>
                   <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-6">
                     {selectedDashboard.metrics.length ? selectedDashboard.metrics.map((item) => (
                       <DashboardMetricCard key={item.label} item={item} />
                     )) : (
-                      <div className="rounded-md border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500 md:col-span-2 xl:col-span-6">
+                      <div className="rounded-md border border-dashed border-[#D8E1E7] px-4 py-8 text-center text-sm text-[#64748B] md:col-span-2 xl:col-span-6">
                         此報告沒有關鍵財務指標。
                       </div>
                     )}
                   </div>
                 </section>
 
-                <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+                <section className="rounded-lg border border-[#D8E1E7] bg-white p-5 shadow-sm">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <h2 className="text-lg font-semibold text-slate-950">財務趨勢圖</h2>
-                    <span className="text-xs font-medium text-slate-500">
+                    <h2 className="text-lg font-semibold text-[#1F2937]">財務趨勢圖</h2>
+                    <span className="text-xs font-medium text-[#64748B]">
                       近八季
                     </span>
                   </div>
@@ -606,26 +617,26 @@ function ReportHistoryContent() {
                             barGap={4}
                             barCategoryGap="16%"
                           >
-                            <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
+                            <CartesianGrid stroke="#E5EAEF" strokeDasharray="3 3" vertical={false} />
                             <XAxis
                               dataKey="period"
                               interval={0}
-                              axisLine={{ stroke: "#cbd5e1" }}
+                              axisLine={{ stroke: "#D8E1E7" }}
                               tickLine={false}
-                              tick={{ fill: "#475569", fontSize: 12 }}
+                              tick={{ fill: "#64748B", fontSize: 12 }}
                             />
                             <YAxis
                               yAxisId="amount"
                               width={58}
                               axisLine={false}
                               tickLine={false}
-                              tick={{ fill: "#475569", fontSize: 12 }}
+                              tick={{ fill: "#64748B", fontSize: 12 }}
                               tickFormatter={(value: number) => value.toLocaleString("zh-TW")}
                               label={{
                                 value: "億元",
                                 angle: -90,
                                 position: "insideLeft",
-                                fill: "#475569",
+                                fill: "#64748B",
                                 fontSize: 12,
                               }}
                             />
@@ -636,18 +647,18 @@ function ReportHistoryContent() {
                               domain={[0, 70]}
                               axisLine={false}
                               tickLine={false}
-                              tick={{ fill: "#475569", fontSize: 12 }}
+                              tick={{ fill: "#64748B", fontSize: 12 }}
                               tickFormatter={(value: number) => formatPercent(value)}
                               label={{
                                 value: "百分比",
                                 angle: 90,
                                 position: "insideRight",
-                                fill: "#475569",
+                                fill: "#64748B",
                                 fontSize: 12,
                               }}
                             />
                             <Tooltip
-                              cursor={{ fill: "#f1f5f9" }}
+                              cursor={{ fill: "#F6F8FA" }}
                               formatter={(value, name) => {
                                 if (value === null || value === undefined) {
                                   return ["-", name];
@@ -661,9 +672,9 @@ function ReportHistoryContent() {
                                 ];
                               }}
                               contentStyle={{
-                                borderColor: "#cbd5e1",
+                                borderColor: "#D8E1E7",
                                 borderRadius: 8,
-                                color: "#0f172a",
+                                color: "#1F2937",
                                 boxShadow: "0 10px 30px rgba(15, 23, 42, 0.12)",
                               }}
                             />
@@ -673,23 +684,30 @@ function ReportHistoryContent() {
                               iconType="circle"
                               wrapperStyle={{ paddingBottom: 12, fontSize: 13 }}
                             />
-                            <Bar yAxisId="amount" dataKey="revenue" name="營收" fill="#14b8a6" radius={[4, 4, 0, 0]} />
-                            <Bar yAxisId="amount" dataKey="netIncome" name="淨利" fill="#a855f7" radius={[4, 4, 0, 0]} />
+                            <Bar yAxisId="amount" dataKey="revenue" name="營收" fill="#3F8F86" radius={[4, 4, 0, 0]} />
+                            <Bar yAxisId="amount" dataKey="netIncome" name="淨利" fill="#91AAA6" radius={[4, 4, 0, 0]}>
+                              {selectedDashboard.financialTrends.map((entry) => (
+                                <Cell
+                                  key={`net-income-${entry.period}`}
+                                  fill={Number(entry.netIncome) < 0 ? "#B85450" : "#91AAA6"}
+                                />
+                              ))}
+                            </Bar>
                             <Line
                               yAxisId="margin"
                               type="monotone"
                               dataKey="grossMargin"
                               name="毛利率"
-                              stroke="#1d4ed8"
+                              stroke="#285C57"
                               strokeWidth={3}
-                              dot={{ r: 4, fill: "#1d4ed8", strokeWidth: 0 }}
-                              activeDot={{ r: 6, fill: "#1d4ed8", stroke: "#ffffff", strokeWidth: 2 }}
+                              dot={{ r: 4, fill: "#285C57", strokeWidth: 0 }}
+                              activeDot={{ r: 6, fill: "#285C57", stroke: "#ffffff", strokeWidth: 2 }}
                             />
                           </ComposedChart>
                         </ResponsiveContainer>
                       </div>
                     ) : (
-                      <div className="flex h-full items-center justify-center rounded-md border border-dashed border-slate-300 px-4 text-center text-sm text-slate-500">
+                      <div className="flex h-full items-center justify-center rounded-md border border-dashed border-[#D8E1E7] px-4 text-center text-sm text-[#64748B]">
                         此報告沒有財務趨勢資料。
                       </div>
                     )}
