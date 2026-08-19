@@ -309,7 +309,7 @@ export default function ReportGeneratorPage() {
 
 function ReportGeneratorContent() {
   const [companyCode, setCompanyCode] = useState(
-    "台灣積體電路製造股份有限公司 / 2330 / 台積電",
+    "",
   );
   const [year, setYear] = useState("2024");
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
