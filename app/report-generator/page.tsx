@@ -309,7 +309,7 @@ export default function ReportGeneratorPage() {
 
 function ReportGeneratorContent() {
   const [companyCode, setCompanyCode] = useState(
-    "",
+    () => COMPANY_OPTIONS[0]?.label ?? "",
   );
   const [year, setYear] = useState("2024");
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
