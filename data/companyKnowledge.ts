@@ -7,6 +7,7 @@ export type CompanyOption = {
 
 
 export const COMPANY_OPTIONS: CompanyOption[] = [
+  /* 暫時停用：不在「16間公司2024:2025財務報表」測試資料內。
   {
     label: "士林電機廠股份有限公司 / 1503 / 士電",
     promptValue: "士林電機廠股份有限公司(1503.TW)",
@@ -73,6 +74,7 @@ export const COMPANY_OPTIONS: CompanyOption[] = [
     industry: "水泥建材",
     imagePath: "/images/report-generator-companies/TaiwanCement.png.png",
   },
+  */
   {
     label: "新光產物保險股份有限公司 / 2850 / 新產",
     promptValue: "新光產物保險股份有限公司(2850.TW)",
@@ -158,6 +160,19 @@ export const COMPANY_OPTIONS: CompanyOption[] = [
     imagePath: "/images/report-generator-companies/EliteAdvancedLaser.jpg",
   },
   {
+    label: "安馳科技股份有限公司 / 3528 / 安馳",
+    promptValue: "安馳科技股份有限公司(3528.TW)",
+    industry: "電子通路",
+    imagePath: "",
+  },
+  {
+    label: "鑫科材料科技股份有限公司 / 3663 / 鑫科",
+    promptValue: "鑫科材料科技股份有限公司(3663.TW)",
+    industry: "光電",
+    imagePath: "",
+  },
+  /* 暫時停用：不在「16間公司2024:2025財務報表」測試資料內。
+  {
     label: "基泰建設股份有限公司 / 2538 / 基泰",
     promptValue: "基泰建設股份有限公司(2538.TW)",
     industry: "建設營造",
@@ -205,6 +220,7 @@ export const COMPANY_OPTIONS: CompanyOption[] = [
     industry: "半導體",
     imagePath: "/images/report-generator-companies/TaiwanSemiconductorManufacturingCompany.png",
   },
+  */
 ];
 
 export const INDUSTRY_OPTIONS = Array.from(
