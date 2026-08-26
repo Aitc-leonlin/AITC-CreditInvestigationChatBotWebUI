@@ -149,6 +149,26 @@
   }
 }
 
+@layer components {
+  .membership-user-form input:not([type="checkbox"]) {
+    background-color: #ffffff;
+  }
+
+  .membership-user-form input:not([type="checkbox"]):-webkit-autofill,
+  .membership-user-form input:not([type="checkbox"]):-webkit-autofill:hover,
+  .membership-user-form input:not([type="checkbox"]):-webkit-autofill:focus {
+    -webkit-text-fill-color: #0f172a !important;
+    box-shadow: 0 0 0 1000px #ffffff inset !important;
+    -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+    caret-color: #0f172a;
+  }
+
+  .membership-user-form input:not([type="checkbox"]):autofill {
+    background-color: #ffffff !important;
+    box-shadow: 0 0 0 1000px #ffffff inset !important;
+  }
+}
+
 @keyframes loading-bounce {
   0%,
   80%,

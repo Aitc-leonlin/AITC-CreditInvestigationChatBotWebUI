@@ -240,6 +240,8 @@ function buildExternalReferenceData(
   decision: "adopted" | "rejected",
   response = "",
 ): ExternalReferenceData[] {
+  if (decision !== "adopted") return [];
+
   const trimmedQueryText = queryText.trim();
   const trimmedResponse = response.trim();
   if (!trimmedQueryText && !trimmedResponse) return [];
@@ -1461,7 +1463,8 @@ export function ChatWindow(props: {
           ]),
         );
         const fallbackExternalData =
-          options?.externalDataDecision && options.externalDataQueryText
+          options?.externalDataDecision === "adopted" &&
+          options.externalDataQueryText
             ? buildExternalReferenceData(
                 options.externalDataQueryText,
                 options.externalDataDecision,

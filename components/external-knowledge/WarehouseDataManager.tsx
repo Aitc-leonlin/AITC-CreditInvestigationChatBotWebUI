@@ -52,6 +52,7 @@ import {
 } from "@/data/chatSettings";
 import {
   DEFAULT_WAREHOUSE_DATA_CATEGORY,
+  WAREHOUSE_DATA_ALL_COMPANY_VALUE,
   WAREHOUSE_DATA_CATEGORIES,
 } from "@/data/warehouseDataOptions";
 import type {
@@ -137,6 +138,12 @@ function renderCategoryLabel(category: WarehouseDataCategory) {
       <span>{category}</span>
     </span>
   );
+}
+
+function renderCompanyLabel(companyLabel: string) {
+  return companyLabel === WAREHOUSE_DATA_ALL_COMPANY_VALUE || !companyLabel
+    ? "不指定特定公司"
+    : companyLabel;
 }
 
 function readStoredCompany() {
@@ -290,7 +297,7 @@ export function WarehouseDataManager() {
       ) => (
         <div className="flex h-full items-center py-3 text-sm leading-6 text-slate-700">
           <div className="whitespace-normal break-words">
-            {params.row.companyLabel || "未指定公司"}
+            {renderCompanyLabel(params.row.companyLabel)}
           </div>
         </div>
       ),
@@ -453,7 +460,9 @@ export function WarehouseDataManager() {
     setDetailEntry(null);
     setCategory(entry.category);
     setIndustry(entry.industry);
-    setCompanyLabel(entry.companyLabel);
+    setCompanyLabel(
+      entry.companyLabel || WAREHOUSE_DATA_ALL_COMPANY_VALUE,
+    );
     setTitle(entry.title);
     setSource(entry.source);
     setUrl(entry.url);
@@ -519,6 +528,10 @@ export function WarehouseDataManager() {
       return;
     }
 
+    if (companyLabel === WAREHOUSE_DATA_ALL_COMPANY_VALUE) {
+      return;
+    }
+
     if (companyOptions.some((option) => option.label === companyLabel)) {
       return;
     }
@@ -566,6 +579,7 @@ export function WarehouseDataManager() {
     const trimmedSummary = summary.trim();
     const trimmedUrl = url.trim();
     const company = getCompanyByLabel(companyLabel);
+    const isAllCompany = companyLabel === WAREHOUSE_DATA_ALL_COMPANY_VALUE;
 
     setShowValidationErrors(true);
 
@@ -577,7 +591,7 @@ export function WarehouseDataManager() {
       toast.error("請先選擇產業");
       return;
     }
-    if (!company) {
+    if (!isAllCompany && !company) {
       toast.error("請先選擇公司");
       return;
     }
@@ -597,9 +611,9 @@ export function WarehouseDataManager() {
     const nextEntry = {
       category,
       title: trimmedTitle,
-      industry: company.industry,
-      companyLabel: company.label,
-      companyPromptValue: company.promptValue,
+      industry: company?.industry ?? industry,
+      companyLabel: company?.label ?? WAREHOUSE_DATA_ALL_COMPANY_VALUE,
+      companyPromptValue: company?.promptValue ?? "",
       summary: trimmedSummary,
       source: trimmedSource,
       url: trimmedUrl,
@@ -802,6 +816,9 @@ export function WarehouseDataManager() {
                     onChange={(event) => setCompanyLabel(event.target.value)}
                   >
                     <option value="">請選擇公司</option>
+                    <option value={WAREHOUSE_DATA_ALL_COMPANY_VALUE}>
+                      不指定特定公司
+                    </option>
                     {companyOptions.map((option) => (
                       <option key={option.label} value={option.label}>
                         {option.label}
@@ -905,7 +922,7 @@ export function WarehouseDataManager() {
                     }}
                   />
                   <Chip
-                    label={detailEntry.companyLabel || "未指定公司"}
+                    label={renderCompanyLabel(detailEntry.companyLabel)}
                     size="small"
                     sx={{
                       fontWeight: 700,

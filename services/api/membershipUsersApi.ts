@@ -13,6 +13,8 @@ export type MembershipUser = {
   organizationName: string | null;
   departmentId: string | null;
   departmentName: string | null;
+  positionId: string | null;
+  positionName: string | null;
   managerUserId: string | null;
   managerDisplayName: string | null;
   status: MembershipUserStatus;
@@ -42,7 +44,7 @@ export type MembershipUserPayload = {
   employeeNo: string;
   organizationId: string | null;
   departmentId?: string | null;
-  managerUserId?: string | null;
+  positionId?: string | null;
   status: MembershipUserStatus;
   locale: string;
   timezone: string;

@@ -23,7 +23,6 @@ export type OrganizationUnit = {
   description: string;
   path: string;
   level: number;
-  sortOrder: number;
   status: Status;
   children: OrganizationUnit[];
   createdAt: string;
@@ -38,71 +37,20 @@ export type OrganizationUnitPayload = {
   companyId: string | null;
   managerUserId: string | null;
   description: string;
-  sortOrder: number;
   status: Status;
 };
 
 export type Position = {
   id: string;
-  code: string;
   name: string;
   description: string;
   level: number;
-  sortOrder: number;
-  status: Status;
-  userCount: number;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type PositionPayload = Omit<Position, "id" | "userCount" | "createdAt" | "updatedAt">;
-
-export type UserDepartmentMapping = {
-  id: string;
-  userId: string;
-  username: string | null;
-  displayName: string | null;
-  organizationId: string;
-  organizationName: string | null;
-  positionId: string | null;
-  positionName: string | null;
-  isPrimary: boolean;
-  effectiveFrom: string | null;
-  effectiveTo: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type UserDepartmentMappingPayload = {
-  userId: string;
-  organizationId: string;
-  positionId: string | null;
-  isPrimary: boolean;
-  effectiveFrom: string | null;
-  effectiveTo: string | null;
-};
-
-export type ManagerRelation = {
-  id: string;
-  managerUserId: string;
-  managerDisplayName: string | null;
-  employeeUserId: string;
-  employeeDisplayName: string | null;
-  organizationId: string | null;
-  organizationName: string | null;
-  relationType: string;
   status: Status;
   createdAt: string;
   updatedAt: string;
 };
 
-export type ManagerRelationPayload = {
-  managerUserId: string;
-  employeeUserId: string;
-  organizationId: string | null;
-  relationType: string;
-  status: Status;
-};
+export type PositionPayload = Omit<Position, "id" | "createdAt" | "updatedAt">;
 
 async function parseApiResponse<T>(response: Response): Promise<T> {
   const body = (await response.json()) as ApiResponse<T>;
@@ -168,7 +116,7 @@ export async function deleteOrganizationUnit(unitId: string) {
     method: "DELETE",
     headers: getMembershipAuthHeaders(),
   });
-  return parseApiResponse<{ deleted: boolean }>(response);
+  return parseApiResponse<{ deleted: boolean; deletedCount: number; detachedUserCount: number }>(response);
 }
 
 export async function fetchPositions(params: { keyword?: string; status?: string } = {}) {
@@ -199,56 +147,6 @@ export async function updatePosition(positionId: string, payload: PositionPayloa
 
 export async function deletePosition(positionId: string) {
   const response = await fetchBackendApi(organizationPath(`/positions/${positionId}`), {
-    method: "DELETE",
-    headers: getMembershipAuthHeaders(),
-  });
-  return parseApiResponse<{ deleted: boolean }>(response);
-}
-
-export async function fetchUserDepartmentMappings(params: { userId?: string; organizationId?: string } = {}) {
-  const response = await fetchBackendApi(withSearchParams(organizationPath("/user-departments"), params), {
-    headers: getMembershipAuthHeaders(),
-    cache: "no-store",
-  });
-  return parseApiResponse<UserDepartmentMapping[]>(response);
-}
-
-export async function createUserDepartmentMapping(payload: UserDepartmentMappingPayload) {
-  const response = await fetchBackendApi(organizationPath("/user-departments"), {
-    method: "POST",
-    headers: jsonHeaders(),
-    body: JSON.stringify(payload),
-  });
-  return parseApiResponse<UserDepartmentMapping>(response);
-}
-
-export async function deleteUserDepartmentMapping(mappingId: string) {
-  const response = await fetchBackendApi(organizationPath(`/user-departments/${mappingId}`), {
-    method: "DELETE",
-    headers: getMembershipAuthHeaders(),
-  });
-  return parseApiResponse<{ deleted: boolean }>(response);
-}
-
-export async function fetchManagerRelations(params: { managerUserId?: string; employeeUserId?: string } = {}) {
-  const response = await fetchBackendApi(withSearchParams(organizationPath("/manager-relations"), params), {
-    headers: getMembershipAuthHeaders(),
-    cache: "no-store",
-  });
-  return parseApiResponse<ManagerRelation[]>(response);
-}
-
-export async function createManagerRelation(payload: ManagerRelationPayload) {
-  const response = await fetchBackendApi(organizationPath("/manager-relations"), {
-    method: "POST",
-    headers: jsonHeaders(),
-    body: JSON.stringify(payload),
-  });
-  return parseApiResponse<ManagerRelation>(response);
-}
-
-export async function deleteManagerRelation(relationId: string) {
-  const response = await fetchBackendApi(organizationPath(`/manager-relations/${relationId}`), {
     method: "DELETE",
     headers: getMembershipAuthHeaders(),
   });

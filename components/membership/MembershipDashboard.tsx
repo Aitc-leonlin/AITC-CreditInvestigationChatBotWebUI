@@ -52,7 +52,7 @@ const widgets = [
   },
   {
     title: "組織管理",
-    description: "公司、部門、團隊、職位、部門對應與主管關係設定。",
+    description: "公司、部門、團隊與職位設定；帳號所屬部門由帳號管理維護。",
     href: "/membership/organizations",
     permission: MODULE_PERMISSIONS.organizationScopeView,
     icon: Building2,

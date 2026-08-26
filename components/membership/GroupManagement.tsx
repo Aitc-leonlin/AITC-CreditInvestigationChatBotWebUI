@@ -39,6 +39,10 @@ const EMPTY_GROUP: GroupPayload = {
   status: "ACTIVE",
 };
 
+function normalizeGroupCode(code: string) {
+  return code.trim().toUpperCase().replaceAll(" ", "_");
+}
+
 const DATA_GRID_PAGINATION_SLOT_PROPS = {
   basePagination: {
     material: {
@@ -156,7 +160,14 @@ export default function GroupManagement() {
     }
     try {
       setIsSavingGroup(true);
-      const saved = await createMembershipGroup(groupForm);
+      const normalizedForm = { ...groupForm, code: normalizeGroupCode(groupForm.code) };
+      const existingGroups = await fetchMembershipGroups();
+      if (existingGroups.groups.some((group) => normalizeGroupCode(group.code) === normalizedForm.code)) {
+        setGroupForm(normalizedForm);
+        toast.error(`群組代碼「${normalizedForm.code}」已存在，請使用其他代碼。`);
+        return;
+      }
+      const saved = await createMembershipGroup(normalizedForm);
       toast.success("群組已新增");
       setGroupDialogOpen(false);
       await loadGroups(saved.id);

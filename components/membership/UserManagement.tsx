@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type * as React from "react";
 import { useRouter } from "next/navigation";
 import { Chip, Tooltip } from "@mui/material";
@@ -10,6 +10,7 @@ import {
   type GridPaginationModel,
   type GridRenderCellParams,
 } from "@mui/x-data-grid";
+import { RichTreeView } from "@mui/x-tree-view/RichTreeView";
 import {
   Ban,
   CheckCircle2,
@@ -59,7 +60,12 @@ import {
   type MembershipUserStatus,
 } from "@/services/api/membershipUsersApi";
 import { fetchRoles, fetchUserRoleIds, type Role } from "@/services/api/membershipRbacApi";
-import { fetchOrganizationUnits, type OrganizationUnit } from "@/services/api/membershipOrganizationApi";
+import {
+  fetchOrganizationUnits,
+  fetchPositions,
+  type OrganizationUnit,
+  type Position,
+} from "@/services/api/membershipOrganizationApi";
 
 type UserDialogMode = "create" | "edit" | "profile" | "changePassword" | "resetPassword";
 
@@ -70,7 +76,7 @@ type UserFormState = {
   employeeNo: string;
   organizationId: string;
   departmentId: string;
-  managerUserId: string;
+  positionId: string;
   status: MembershipUserStatus;
   locale: string;
   timezone: string;
@@ -88,7 +94,7 @@ const DEFAULT_FORM_STATE: UserFormState = {
   employeeNo: "",
   organizationId: "",
   departmentId: "",
-  managerUserId: "",
+  positionId: "",
   status: "ACTIVE",
   locale: "zh-TW",
   timezone: "Asia/Taipei",
@@ -115,7 +121,7 @@ function userToFormState(user: MembershipUser): UserFormState {
     employeeNo: user.employeeNo,
     organizationId: user.organizationId ?? "",
     departmentId: user.departmentId ?? "",
-    managerUserId: user.managerUserId ?? "",
+    positionId: user.positionId ?? "",
     status: user.status,
     locale: user.locale,
     timezone: user.timezone,
@@ -131,7 +137,7 @@ function toUserPayload(form: UserFormState): MembershipUserPayload {
     employeeNo: form.employeeNo,
     organizationId: form.departmentId || form.organizationId || null,
     departmentId: form.departmentId || null,
-    managerUserId: form.managerUserId || null,
+    positionId: form.positionId || null,
     status: form.status,
     locale: form.locale,
     timezone: form.timezone,
@@ -143,7 +149,7 @@ export default function UserManagement() {
   const [users, setUsers] = useState<MembershipUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [departments, setDepartments] = useState<OrganizationUnit[]>([]);
-  const [managerUsers, setManagerUsers] = useState<MembershipUser[]>([]);
+  const [positions, setPositions] = useState<Position[]>([]);
   const { hasPermission } = useMembershipPermissions();
   const canWriteUsers = hasPermission("membership.write");
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -199,12 +205,12 @@ export default function UserManagement() {
     Promise.all([
       fetchRoles({ status: "ACTIVE" }),
       fetchOrganizationUnits({ status: "ACTIVE" }),
-      fetchMembershipUsers({ page: 1, pageSize: 200, status: "ACTIVE" }),
+      fetchPositions({ status: "ACTIVE" }),
     ])
-      .then(([roleRows, organizationRows, userRows]) => {
+      .then(([roleRows, organizationRows, positionRows]) => {
         setRoles(roleRows);
-        setDepartments(organizationRows.filter((unit) => unit.unitType === "DEPARTMENT" || unit.unitType === "TEAM"));
-        setManagerUsers(userRows.users);
+        setDepartments(organizationRows);
+        setPositions(positionRows);
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "讀取表單選項失敗"));
   }, [canWriteUsers]);
@@ -338,10 +344,24 @@ export default function UserManagement() {
       },
       {
         field: "organizationName",
-        headerName: "部門",
+        headerName: "所屬組織",
         minWidth: 150,
         flex: 0.7,
         valueGetter: (_, row) => row.departmentName || row.departmentId || row.organizationName || row.organizationId || "-",
+      },
+      {
+        field: "positionName",
+        headerName: "職位",
+        minWidth: 130,
+        flex: 0.55,
+        valueGetter: (_, row) => row.positionName || "-",
+      },
+      {
+        field: "managerDisplayName",
+        headerName: "主管",
+        minWidth: 140,
+        flex: 0.6,
+        valueGetter: (_, row) => row.managerDisplayName || "-",
       },
       {
         field: "status",
@@ -506,7 +526,7 @@ export default function UserManagement() {
               {dialogDescription(dialogMode)}
             </DialogDescription>
           </DialogHeader>
-          <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
+          <form className="membership-user-form flex min-h-0 flex-1 flex-col" onSubmit={handleSubmit}>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
               {dialogMode === "create" || dialogMode === "edit" ? (
                 <UserFields
@@ -515,8 +535,7 @@ export default function UserManagement() {
                   includePassword={dialogMode === "create"}
                   roles={roles}
                   departments={departments}
-                  managerUsers={managerUsers}
-                  selectedUserId={selectedUser?.id ?? null}
+                  positions={positions}
                   includeRoles={dialogMode === "create" || dialogMode === "edit"}
                 />
               ) : null}
@@ -581,8 +600,7 @@ function UserFields({
   includePassword,
   roles,
   departments,
-  managerUsers,
-  selectedUserId,
+  positions,
   includeRoles,
 }: {
   form: UserFormState;
@@ -590,76 +608,128 @@ function UserFields({
   includePassword: boolean;
   roles: Role[];
   departments: OrganizationUnit[];
-  managerUsers: MembershipUser[];
-  selectedUserId: string | null;
+  positions: Position[];
   includeRoles: boolean;
 }) {
-  const selectedDepartment = departments.find((department) => department.id === form.departmentId) ?? null;
-  const managerOptions = managerUsers.filter((user) => {
-    if (user.id === selectedUserId) return false;
-    if (!form.departmentId) return true;
-    return (
-      user.departmentId === form.departmentId
-      || user.organizationId === form.departmentId
-      || user.id === selectedDepartment?.managerUserId
-    );
-  });
+  const organizationTreeItems = useMemo(() => buildOrganizationTreeItems(departments), [departments]);
+  const selectedOrganization = departments.find((department) => department.id === form.departmentId) ?? null;
+  const selectedOrganizationPath = useMemo(
+    () => getOrganizationPathLabel(departments, form.departmentId),
+    [departments, form.departmentId],
+  );
+  const [expandedOrganizationIds, setExpandedOrganizationIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    const validIds = new Set(departments.map((department) => department.id));
+    const rootIds = departments
+      .filter((department) => !department.parentId || !validIds.has(department.parentId))
+      .map((department) => department.id);
+    const selectedPathIds = getOrganizationAncestorIds(departments, form.departmentId);
+    setExpandedOrganizationIds((current) => [
+      ...new Set([
+        ...current.filter((id) => validIds.has(id)),
+        ...rootIds,
+        ...selectedPathIds,
+      ]),
+    ]);
+  }, [departments, form.departmentId]);
 
   function handleDepartmentChange(departmentId: string) {
     setForm((current) => ({
       ...current,
       departmentId,
       organizationId: departmentId,
-      managerUserId: managerUsers.some((user) => (
-        user.id === current.managerUserId
-        && user.id !== selectedUserId
-        && (!departmentId || user.departmentId === departmentId || user.organizationId === departmentId)
-      )) ? current.managerUserId : "",
     }));
   }
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <Field label="帳號">
-        <Input value={form.username} onChange={(event) => setFormValue(setForm, "username", event.target.value)} required minLength={3} />
+      <Field label="帳號" required>
+        <Input className="invalid:border-input invalid:ring-0" value={form.username} onChange={(event) => setFormValue(setForm, "username", event.target.value)} required minLength={3} />
       </Field>
-      <Field label="姓名">
-        <Input value={form.displayName} onChange={(event) => setFormValue(setForm, "displayName", event.target.value)} required />
+      <Field label="姓名" required>
+        <Input className="invalid:border-input invalid:ring-0" value={form.displayName} onChange={(event) => setFormValue(setForm, "displayName", event.target.value)} required />
       </Field>
-      <Field label="Email">
-        <Input type="email" value={form.email} onChange={(event) => setFormValue(setForm, "email", event.target.value)} required />
+      <Field label="Email" required>
+        <Input className="invalid:border-input invalid:ring-0" type="email" value={form.email} onChange={(event) => setFormValue(setForm, "email", event.target.value)} required />
       </Field>
       <Field label="員工編號">
         <Input value={form.employeeNo} onChange={(event) => setFormValue(setForm, "employeeNo", event.target.value)} />
       </Field>
-      <Field label="使用者部門" hint="設定此帳號所屬的組織單位，不會自動指定直屬主管。">
+      <Field label="職位">
         <select
-          value={form.departmentId}
-          onChange={(event) => handleDepartmentChange(event.target.value)}
+          value={form.positionId}
+          onChange={(event) => setFormValue(setForm, "positionId", event.target.value)}
           className="h-9 w-full rounded-md border border-input bg-white px-3 text-sm"
         >
-          <option value="">不指定</option>
-          {departments.map((department) => (
-            <option key={department.id} value={department.id}>
-              {department.name}
+          <option value="">未指定職位</option>
+          {positions.map((position) => (
+            <option key={position.id} value={position.id}>
+              {position.name}
             </option>
           ))}
         </select>
       </Field>
-      <Field label="直屬主管" hint="設定此員工實際向誰報告或由誰簽核，和組織單位的部門主管分開管理。">
-        <select
-          value={form.managerUserId}
-          onChange={(event) => setFormValue(setForm, "managerUserId", event.target.value)}
-          className="h-9 w-full rounded-md border border-input bg-white px-3 text-sm"
-        >
-          <option value="">不指定</option>
-          {managerOptions.map((user) => (
-            <option key={user.id} value={user.id}>
-              {user.displayName} / {user.username}
-            </option>
-          ))}
-        </select>
-      </Field>
+      <section className="grid min-w-0 gap-1.5 text-sm font-medium text-slate-700 md:col-span-2">
+        <span>使用者部門</span>
+        <div className="overflow-hidden rounded-md border border-input bg-white shadow-sm">
+          <div className="flex min-h-10 items-center justify-between gap-3 border-b border-[#e5eef5] bg-[#f8fcff] px-3 py-2">
+            <span className="min-w-0 truncate text-sm font-normal text-slate-700">
+              {selectedOrganization ? `已選擇：${selectedOrganizationPath}` : "尚未指定部門"}
+            </span>
+            {selectedOrganization ? (
+              <button
+                type="button"
+                className="shrink-0 rounded px-2 py-1 text-xs font-medium text-indigo-600 hover:bg-indigo-50"
+                onClick={() => handleDepartmentChange("")}
+              >
+                清除選擇
+              </button>
+            ) : null}
+          </div>
+          <div className="max-h-60 min-h-32 overflow-y-auto px-2 py-2">
+            {organizationTreeItems.length > 0 ? (
+              <RichTreeView
+                aria-label="選擇使用者部門"
+                items={organizationTreeItems}
+                selectedItems={form.departmentId || null}
+                expandedItems={expandedOrganizationIds}
+                onExpandedItemsChange={(_, itemIds) => setExpandedOrganizationIds(itemIds)}
+                onSelectedItemsChange={(_, itemId) => handleDepartmentChange(itemId ?? "")}
+                expansionTrigger="iconContainer"
+                itemChildrenIndentation={22}
+                sx={{
+                  "& .MuiTreeItem-content": {
+                    borderRadius: "6px",
+                    minHeight: 34,
+                    paddingY: "3px",
+                  },
+                  "& .MuiTreeItem-content:hover": {
+                    backgroundColor: "#eef7fc",
+                  },
+                  "& .MuiTreeItem-content.Mui-selected": {
+                    backgroundColor: "#e0e7ff",
+                    color: "#3730a3",
+                  },
+                  "& .MuiTreeItem-content.Mui-selected:hover": {
+                    backgroundColor: "#c7d2fe",
+                  },
+                  "& .MuiTreeItem-label": {
+                    fontSize: "0.875rem",
+                  },
+                }}
+              />
+            ) : (
+              <div className="flex min-h-28 items-center justify-center text-sm font-normal text-slate-500">
+                目前沒有可選擇的組織
+              </div>
+            )}
+          </div>
+        </div>
+        <span className="text-xs font-normal leading-5 text-slate-500">
+          主管會依此組織的主管設定自動帶入；本層未設定時會往上層組織尋找。
+        </span>
+      </section>
       <Field label="帳號狀態">
         <select
           value={form.status}
@@ -677,8 +747,8 @@ function UserFields({
         <Input value={form.timezone} onChange={(event) => setFormValue(setForm, "timezone", event.target.value)} />
       </Field>
       {includePassword ? (
-        <Field label="初始密碼">
-          <Input type="password" value={form.password} onChange={(event) => setFormValue(setForm, "password", event.target.value)} minLength={8} required />
+        <Field label="初始密碼" required>
+          <Input className="invalid:border-input invalid:ring-0" type="password" value={form.password} onChange={(event) => setFormValue(setForm, "password", event.target.value)} minLength={8} required />
         </Field>
       ) : null}
       {includeRoles ? (
@@ -774,14 +844,82 @@ function PasswordFields({
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({ label, hint, required = false, children }: { label: string; hint?: string; required?: boolean; children: React.ReactNode }) {
   return (
     <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-      <span>{label}</span>
+      <span>
+        {label}
+        {required ? <span className="ml-1 text-red-600" aria-hidden="true">*</span> : null}
+      </span>
       {children}
       {hint ? <span className="text-xs font-normal leading-5 text-slate-500">{hint}</span> : null}
     </label>
   );
+}
+
+type OrganizationTreeItem = {
+  id: string;
+  label: string;
+  children: OrganizationTreeItem[];
+};
+
+function buildOrganizationTreeItems(units: OrganizationUnit[]): OrganizationTreeItem[] {
+  const itemsById = new Map<string, OrganizationTreeItem>();
+
+  units.forEach((unit) => {
+    itemsById.set(unit.id, {
+      id: unit.id,
+      label: unit.name,
+      children: [],
+    });
+  });
+
+  const roots: OrganizationTreeItem[] = [];
+  units.forEach((unit) => {
+    const item = itemsById.get(unit.id);
+    if (!item) return;
+    const parent = unit.parentId ? itemsById.get(unit.parentId) : null;
+    if (parent && parent !== item) parent.children.push(item);
+    else roots.push(item);
+  });
+
+  const sortItems = (items: OrganizationTreeItem[]) => {
+    items.sort((left, right) => left.label.localeCompare(right.label, "zh-TW"));
+    items.forEach((item) => sortItems(item.children));
+  };
+  sortItems(roots);
+  return roots;
+}
+
+function getOrganizationAncestorIds(units: OrganizationUnit[], organizationId: string): string[] {
+  if (!organizationId) return [];
+  const unitsById = new Map(units.map((unit) => [unit.id, unit]));
+  const ancestorIds: string[] = [];
+  const visited = new Set<string>();
+  let current = unitsById.get(organizationId);
+
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id);
+    if (!current.parentId) break;
+    ancestorIds.push(current.parentId);
+    current = unitsById.get(current.parentId);
+  }
+  return ancestorIds;
+}
+
+function getOrganizationPathLabel(units: OrganizationUnit[], organizationId: string): string {
+  if (!organizationId) return "";
+  const unitsById = new Map(units.map((unit) => [unit.id, unit]));
+  const labels: string[] = [];
+  const visited = new Set<string>();
+  let current = unitsById.get(organizationId);
+
+  while (current && !visited.has(current.id)) {
+    visited.add(current.id);
+    labels.unshift(current.name);
+    current = current.parentId ? unitsById.get(current.parentId) : undefined;
+  }
+  return labels.join(" / ");
 }
 
 function setFormValue<Key extends keyof UserFormState>(

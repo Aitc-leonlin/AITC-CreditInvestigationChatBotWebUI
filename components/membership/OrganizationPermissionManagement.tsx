@@ -4,9 +4,7 @@ import { FormEvent, useEffect, useMemo, useState, type ReactNode } from "react";
 import { Tooltip } from "@mui/material";
 import { DataGrid, type GridColDef, type GridRenderCellParams } from "@mui/x-data-grid";
 import {
-  Building2,
   GitBranch,
-  Network,
   Pencil,
   Plus,
   Trash2,
@@ -22,42 +20,30 @@ import { fetchMembershipUsers, type MembershipUser } from "@/services/api/member
 import { MODULE_PERMISSIONS } from "@/data/modulePermissions";
 import { useMembershipPermissions } from "@/hooks/useMembershipPermissions";
 import {
-  createManagerRelation,
   createOrganizationUnit,
   createPosition,
-  createUserDepartmentMapping,
-  deleteManagerRelation,
   deleteOrganizationUnit,
   deletePosition,
-  deleteUserDepartmentMapping,
-  fetchManagerRelations,
   fetchOrganizationTree,
   fetchOrganizationUnits,
   fetchPositions,
-  fetchUserDepartmentMappings,
   updateOrganizationUnit,
   updatePosition,
-  type ManagerRelation,
-  type ManagerRelationPayload,
   type OrganizationUnit,
   type OrganizationUnitPayload,
   type OrganizationUnitType,
   type Position,
   type PositionPayload,
   type Status,
-  type UserDepartmentMapping,
-  type UserDepartmentMappingPayload,
 } from "@/services/api/membershipOrganizationApi";
 import { cn } from "@/utils/cn";
 
-type TabKey = "tree" | "positions" | "mappings" | "managers";
-type DialogMode = "unit" | "position" | "mapping" | "manager";
+type TabKey = "tree" | "positions";
+type DialogMode = "unit" | "position";
 
-const TABS: Array<{ key: TabKey; label: string; icon: typeof Building2 }> = [
+const TABS: Array<{ key: TabKey; label: string; icon: typeof GitBranch }> = [
   { key: "tree", label: "組織樹", icon: GitBranch },
   { key: "positions", label: "職位", icon: UserRoundCog },
-  { key: "mappings", label: "部門對應", icon: Network },
-  { key: "managers", label: "主管關係", icon: Building2 },
 ];
 
 const UNIT_EMPTY: OrganizationUnitPayload = {
@@ -68,33 +54,13 @@ const UNIT_EMPTY: OrganizationUnitPayload = {
   companyId: null,
   managerUserId: null,
   description: "",
-  sortOrder: 0,
   status: "ACTIVE",
 };
 
 const POSITION_EMPTY: PositionPayload = {
-  code: "",
   name: "",
   description: "",
   level: 0,
-  sortOrder: 0,
-  status: "ACTIVE",
-};
-
-const MAPPING_EMPTY: UserDepartmentMappingPayload = {
-  userId: "",
-  organizationId: "",
-  positionId: null,
-  isPrimary: true,
-  effectiveFrom: null,
-  effectiveTo: null,
-};
-
-const MANAGER_EMPTY: ManagerRelationPayload = {
-  managerUserId: "",
-  employeeUserId: "",
-  organizationId: null,
-  relationType: "DIRECT",
   status: "ACTIVE",
 };
 
@@ -109,19 +75,26 @@ export default function OrganizationPermissionManagement() {
   const [tree, setTree] = useState<OrganizationUnit[]>([]);
   const [positions, setPositions] = useState<Position[]>([]);
   const [users, setUsers] = useState<MembershipUser[]>([]);
-  const [mappings, setMappings] = useState<UserDepartmentMapping[]>([]);
-  const [managerRelations, setManagerRelations] = useState<ManagerRelation[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [dialogMode, setDialogMode] = useState<DialogMode | null>(null);
   const [selectedUnit, setSelectedUnit] = useState<OrganizationUnit | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
+  const [pendingDeleteUnit, setPendingDeleteUnit] = useState<OrganizationUnit | null>(null);
+  const [isDeletingUnit, setIsDeletingUnit] = useState(false);
   const [unitForm, setUnitForm] = useState<OrganizationUnitPayload>(UNIT_EMPTY);
   const [positionForm, setPositionForm] = useState<PositionPayload>(POSITION_EMPTY);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [mappingForm, setMappingForm] = useState<UserDepartmentMappingPayload>(MAPPING_EMPTY);
-  const [managerForm, setManagerForm] = useState<ManagerRelationPayload>(MANAGER_EMPTY);
 
   const flatTreeRows = useMemo(() => flattenTree(tree), [tree]);
+  const pendingDeleteDescendants = useMemo(
+    () => pendingDeleteUnit ? getDescendantUnits(units, pendingDeleteUnit.id) : [],
+    [pendingDeleteUnit, units],
+  );
+  const availableParentUnits = useMemo(() => {
+    if (!selectedUnit) return units;
+    const unavailableIds = getOrganizationAndChildIds(units, selectedUnit.id);
+    return units.filter((unit) => !unavailableIds.has(unit.id));
+  }, [selectedUnit, units]);
   const unitManagerScopeId = selectedUnit?.id ?? unitForm.parentId ?? unitForm.companyId ?? "";
   const unitManagerUsers = useMemo(
     () => filterUsersByOrganization(users, units, unitManagerScopeId),
@@ -144,22 +117,16 @@ export default function OrganizationPermissionManagement() {
         treeRows,
         positionRows,
         userRows,
-        mappingRows,
-        managerRows,
       ] = await Promise.all([
         fetchOrganizationUnits(),
         fetchOrganizationTree(),
         fetchPositions(),
         fetchMembershipUsers({ page: 1, pageSize: 200 }),
-        fetchUserDepartmentMappings(),
-        fetchManagerRelations(),
       ]);
       setUnits(unitRows);
       setTree(treeRows);
       setPositions(positionRows);
       setUsers(userRows.users);
-      setMappings(mappingRows);
-      setManagerRelations(managerRows);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "讀取組織資料失敗");
     } finally {
@@ -204,6 +171,32 @@ export default function OrganizationPermissionManagement() {
     setFieldErrors({});
   }
 
+  function openDeleteUnit(unit: OrganizationUnit) {
+    if (!canDelete) {
+      toast.error("目前帳號沒有 organization-scope.delete 權限。");
+      return;
+    }
+    setPendingDeleteUnit(unit);
+  }
+
+  async function confirmDeleteUnit() {
+    if (!pendingDeleteUnit || isDeletingUnit) return;
+    try {
+      setIsDeletingUnit(true);
+      const result = await deleteOrganizationUnit(pendingDeleteUnit.id);
+      const detachedMessage = result.detachedUserCount > 0
+        ? `，${result.detachedUserCount} 位使用者已解除組織歸屬`
+        : "";
+      toast.success(`已刪除 ${result.deletedCount} 個組織${detachedMessage}`);
+      setPendingDeleteUnit(null);
+      await loadAll();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "刪除組織失敗");
+    } finally {
+      setIsDeletingUnit(false);
+    }
+  }
+
   function updateUnitFormWithManagerScope(nextForm: OrganizationUnitPayload) {
     const nextScopeId = selectedUnit?.id ?? nextForm.parentId ?? nextForm.companyId ?? "";
     const nextManagerUsers = filterUsersByOrganization(users, units, nextScopeId);
@@ -216,7 +209,7 @@ export default function OrganizationPermissionManagement() {
 
   async function submitUnit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const codeError = getCodeMinLengthError(unitForm.code, "組織代碼");
+    const codeError = getOrganizationCodeError(unitForm.code);
     if (codeError) {
       setFieldErrors((current) => ({ ...current, unitCode: codeError }));
       toast.error(codeError);
@@ -233,6 +226,7 @@ export default function OrganizationPermissionManagement() {
     try {
       const payload = {
         ...unitForm,
+        code: unitForm.code.trim().toUpperCase(),
         managerUserId: unitManagerValue || null,
       };
       if (selectedUnit) await updateOrganizationUnit(selectedUnit.id, payload);
@@ -247,12 +241,6 @@ export default function OrganizationPermissionManagement() {
 
   async function submitPosition(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const codeError = getCodeMinLengthError(positionForm.code, "職位代碼");
-    if (codeError) {
-      setFieldErrors((current) => ({ ...current, positionCode: codeError }));
-      toast.error(codeError);
-      return;
-    }
     if (selectedPosition && !canEdit) {
       toast.error("目前帳號沒有 organization-scope.edit 權限。");
       return;
@@ -269,38 +257,6 @@ export default function OrganizationPermissionManagement() {
       await loadAll();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "儲存職位失敗");
-    }
-  }
-
-  async function submitMapping(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!canAdd) {
-      toast.error("目前帳號沒有 organization-scope.add 權限。");
-      return;
-    }
-    try {
-      await createUserDepartmentMapping(mappingForm);
-      toast.success("已建立使用者部門 Mapping");
-      closeDialog();
-      await loadAll();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "建立使用者部門 Mapping 失敗");
-    }
-  }
-
-  async function submitManager(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!canAdd) {
-      toast.error("目前帳號沒有 organization-scope.add 權限。");
-      return;
-    }
-    try {
-      await createManagerRelation(managerForm);
-      toast.success("已建立 Manager / Employee 關係");
-      closeDialog();
-      await loadAll();
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "建立主管關係失敗");
     }
   }
 
@@ -328,17 +284,15 @@ export default function OrganizationPermissionManagement() {
       renderCell: (params: GridRenderCellParams<OrganizationUnit>) => (
         <div className="flex h-full items-center gap-1.5">
           {canEdit ? <IconButton title="編輯" onClick={() => openUnit(params.row)}><Pencil className="h-4 w-4" /></IconButton> : null}
-          {canDelete ? <IconButton title="刪除" danger onClick={() => void deleteOrganizationUnit(params.row.id).then(loadAll).catch((error) => toast.error(error.message))}><Trash2 className="h-4 w-4" /></IconButton> : null}
+          {canDelete ? <IconButton title="刪除" danger onClick={() => openDeleteUnit(params.row)}><Trash2 className="h-4 w-4" /></IconButton> : null}
         </div>
       ),
     },
   ];
 
   const positionColumns: GridColDef<Position>[] = [
-    { field: "code", headerName: "職位代碼", minWidth: 150 },
     { field: "name", headerName: "職位名稱", minWidth: 180, flex: 1 },
     { field: "level", headerName: "職等", minWidth: 90 },
-    { field: "userCount", headerName: "人數", minWidth: 90 },
     { field: "status", headerName: "狀態", minWidth: 100, renderCell: (params) => <div className="flex h-full items-center"><MembershipStatusChip status={params.row.status} /></div> },
     {
       field: "actions",
@@ -354,39 +308,6 @@ export default function OrganizationPermissionManagement() {
     },
   ];
 
-  const mappingColumns: GridColDef<UserDepartmentMapping>[] = [
-    { field: "displayName", headerName: "使用者", minWidth: 170, flex: 0.8 },
-    { field: "organizationName", headerName: "部門/團隊", minWidth: 180, flex: 0.8 },
-    { field: "positionName", headerName: "職位", minWidth: 140 },
-    { field: "isPrimary", headerName: "主要部門", minWidth: 110, type: "boolean" },
-    {
-      field: "actions",
-      headerName: "操作",
-      minWidth: 90,
-      sortable: false,
-      renderCell: (params: GridRenderCellParams<UserDepartmentMapping>) => canDelete ? (
-        <IconButton title="刪除" danger onClick={() => void deleteUserDepartmentMapping(params.row.id).then(loadAll).catch((error) => toast.error(error.message))}><Trash2 className="h-4 w-4" /></IconButton>
-      ) : null,
-    },
-  ];
-
-  const managerColumns: GridColDef<ManagerRelation>[] = [
-    { field: "managerDisplayName", headerName: "Manager", minWidth: 170, flex: 0.8 },
-    { field: "employeeDisplayName", headerName: "Employee", minWidth: 170, flex: 0.8 },
-    { field: "organizationName", headerName: "組織", minWidth: 180, flex: 0.8 },
-    { field: "relationType", headerName: "關係", minWidth: 110 },
-    { field: "status", headerName: "狀態", minWidth: 100, renderCell: (params) => <div className="flex h-full items-center"><MembershipStatusChip status={params.row.status} /></div> },
-    {
-      field: "actions",
-      headerName: "操作",
-      minWidth: 90,
-      sortable: false,
-      renderCell: (params: GridRenderCellParams<ManagerRelation>) => canDelete ? (
-        <IconButton title="刪除" danger onClick={() => void deleteManagerRelation(params.row.id).then(loadAll).catch((error) => toast.error(error.message))}><Trash2 className="h-4 w-4" /></IconButton>
-      ) : null,
-    },
-  ];
-
   if (isPermissionLoading) return null;
 
   if (!canRead) {
@@ -399,7 +320,7 @@ export default function OrganizationPermissionManagement() {
         <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-[#12344a]">組織管理</h1>
-            <p className="mt-1 text-sm text-[#5d7b90]">管理 Company、Department、Team、Position、部門對應與主管關係。</p>
+            <p className="mt-1 text-sm text-[#5d7b90]">管理 Company、Department、Team 與 Position；帳號所屬部門請至帳號管理設定。</p>
           </div>
           <Button variant="outline" onClick={() => void loadAll()}>重新整理</Button>
         </section>
@@ -445,57 +366,46 @@ export default function OrganizationPermissionManagement() {
             </Panel>
           ) : null}
 
-          {tab === "mappings" ? (
-            <Panel
-              title="User Department Mapping"
-              action={canAdd ? <Button onClick={() => { setMappingForm(MAPPING_EMPTY); setDialogMode("mapping"); }} className="bg-indigo-600 text-white hover:bg-indigo-700"><Plus className="h-4 w-4" />新增 Mapping</Button> : null}
-            >
-              <DataGrid rows={mappings} columns={mappingColumns} loading={isLoading} disableRowSelectionOnClick pageSizeOptions={[10, 20, 50]} initialState={{ pagination: { paginationModel: { page: 0, pageSize: 10 } } }} />
-            </Panel>
-          ) : null}
-
-          {tab === "managers" ? (
-            <Panel
-              title="Manager / Employee"
-              action={canAdd ? <Button onClick={() => { setManagerForm(MANAGER_EMPTY); setDialogMode("manager"); }} className="bg-indigo-600 text-white hover:bg-indigo-700"><Plus className="h-4 w-4" />新增關係</Button> : null}
-            >
-              <DataGrid rows={managerRelations} columns={managerColumns} loading={isLoading} disableRowSelectionOnClick pageSizeOptions={[10, 20, 50]} initialState={{ pagination: { paginationModel: { page: 0, pageSize: 10 } } }} />
-            </Panel>
-          ) : null}
-
         </section>
       </div>
 
       <Dialog open={dialogMode === "unit"} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader><DialogTitle>{selectedUnit ? "修改組織單位" : "新增組織單位"}</DialogTitle></DialogHeader>
-          <form className="grid gap-4 md:grid-cols-2" onSubmit={submitUnit}>
-            <Field label="代碼" hint="請輸入至少 2 碼，儲存後會自動轉成大寫。" error={fieldErrors.unitCode}>
+          <form className="grid gap-x-5 gap-y-4 md:grid-cols-12 md:items-start" onSubmit={submitUnit}>
+            <Field className="md:col-span-6" label="代碼" hint="請輸入兩碼英文字母；小寫會在儲存時自動轉成大寫。" error={fieldErrors.unitCode}>
               <Input
                 value={unitForm.code}
                 onChange={(event) => {
                   const code = event.target.value;
                   setUnitForm({ ...unitForm, code });
-                  if (!getCodeMinLengthError(code, "組織代碼")) {
+                  if (!getOrganizationCodeError(code)) {
                     setFieldErrors((current) => ({ ...current, unitCode: "" }));
                   }
                 }}
                 required
                 minLength={2}
+                maxLength={2}
+                pattern="[A-Za-z]{2}"
+                autoCapitalize="characters"
                 className={cn(fieldErrors.unitCode ? "border-red-500 ring-1 ring-red-200 focus-visible:ring-red-500" : "")}
               />
             </Field>
-            <Field label="名稱"><Input value={unitForm.name} onChange={(event) => setUnitForm({ ...unitForm, name: event.target.value })} required /></Field>
-            <Field label="類型"><Select value={unitForm.unitType} onChange={(value) => setUnitForm({ ...unitForm, unitType: value as OrganizationUnitType })} options={[["COMPANY", "Company"], ["DEPARTMENT", "Department"], ["TEAM", "Team"]]} /></Field>
-            <Field label="上層組織"><Select value={unitForm.parentId ?? ""} onChange={(value) => updateUnitFormWithManagerScope({ ...unitForm, parentId: value || null })} options={unitOptions(units, "不指定")} /></Field>
-            <Field label="所屬公司"><Select value={unitForm.companyId ?? ""} onChange={(value) => updateUnitFormWithManagerScope({ ...unitForm, companyId: value || null })} options={unitOptions(units.filter((unit) => unit.unitType === "COMPANY"), "自動/不指定")} /></Field>
-            <Field label="部門主管" hint={unitManagerScopeId ? "負責此組織單位的人，只顯示此組織與下層組織內的使用者；不會自動成為員工的直屬主管。" : "負責此組織單位的人；未選上層組織或所屬公司時顯示全部使用者。"}>
+            <Field className="md:col-span-6" label="名稱"><Input value={unitForm.name} onChange={(event) => setUnitForm({ ...unitForm, name: event.target.value })} required /></Field>
+            <Field className="md:col-span-6" label="類型"><Select value={unitForm.unitType} onChange={(value) => setUnitForm({ ...unitForm, unitType: value as OrganizationUnitType })} options={[["COMPANY", "Company"], ["DEPARTMENT", "Department"], ["TEAM", "Team"]]} /></Field>
+            <Field className="md:col-span-6" label="狀態"><StatusSelect value={unitForm.status} onChange={(status) => setUnitForm({ ...unitForm, status })} /></Field>
+            <Field className="md:col-span-6" label="上層組織"><Select value={unitForm.parentId ?? ""} onChange={(value) => updateUnitFormWithManagerScope({ ...unitForm, parentId: value || null })} options={unitOptions(availableParentUnits, "不指定")} /></Field>
+            <Field className="md:col-span-12" label="組織主管" hint={unitManagerScopeId ? "此主管會自動成為本組織成員的主管；下層組織未設定主管時也會自動沿用。" : "選定主管後，系統會依使用者所屬組織自動判定其主管。"}>
               <Select value={unitManagerValue} onChange={(value) => setUnitForm({ ...unitForm, managerUserId: value || null })} options={userOptions(unitManagerUsers, "不指定")} />
             </Field>
-            <Field label="排序"><Input type="number" value={unitForm.sortOrder} onChange={(event) => setUnitForm({ ...unitForm, sortOrder: Number(event.target.value) })} /></Field>
-            <Field label="狀態"><StatusSelect value={unitForm.status} onChange={(status) => setUnitForm({ ...unitForm, status })} /></Field>
-            <label className="grid gap-1.5 text-sm font-medium text-slate-700 md:col-span-2">描述<textarea className="min-h-20 rounded-md border px-3 py-2 text-sm" value={unitForm.description} onChange={(event) => setUnitForm({ ...unitForm, description: event.target.value })} /></label>
-            <DialogActions onCancel={closeDialog} className="md:col-span-2" />
+            <Field className="md:col-span-12" label="描述">
+              <textarea
+                className="min-h-24 w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring"
+                value={unitForm.description}
+                onChange={(event) => setUnitForm({ ...unitForm, description: event.target.value })}
+              />
+            </Field>
+            <DialogActions onCancel={closeDialog} className="border-t pt-4 md:col-span-12" />
           </form>
         </DialogContent>
       </Dialog>
@@ -504,24 +414,8 @@ export default function OrganizationPermissionManagement() {
         <DialogContent>
           <DialogHeader><DialogTitle>{selectedPosition ? "修改職位" : "新增職位"}</DialogTitle></DialogHeader>
           <form className="grid gap-4" onSubmit={submitPosition}>
-            <Field label="代碼" hint="請輸入至少 2 碼，儲存後會自動轉成大寫。" error={fieldErrors.positionCode}>
-              <Input
-                value={positionForm.code}
-                onChange={(event) => {
-                  const code = event.target.value;
-                  setPositionForm({ ...positionForm, code });
-                  if (!getCodeMinLengthError(code, "職位代碼")) {
-                    setFieldErrors((current) => ({ ...current, positionCode: "" }));
-                  }
-                }}
-                required
-                minLength={2}
-                className={cn(fieldErrors.positionCode ? "border-red-500 ring-1 ring-red-200 focus-visible:ring-red-500" : "")}
-              />
-            </Field>
             <Field label="名稱"><Input value={positionForm.name} onChange={(event) => setPositionForm({ ...positionForm, name: event.target.value })} required /></Field>
             <Field label="職等"><Input type="number" value={positionForm.level} onChange={(event) => setPositionForm({ ...positionForm, level: Number(event.target.value) })} /></Field>
-            <Field label="排序"><Input type="number" value={positionForm.sortOrder} onChange={(event) => setPositionForm({ ...positionForm, sortOrder: Number(event.target.value) })} /></Field>
             <Field label="狀態"><StatusSelect value={positionForm.status} onChange={(status) => setPositionForm({ ...positionForm, status })} /></Field>
             <Field label="描述"><Input value={positionForm.description} onChange={(event) => setPositionForm({ ...positionForm, description: event.target.value })} /></Field>
             <DialogActions onCancel={closeDialog} />
@@ -529,29 +423,51 @@ export default function OrganizationPermissionManagement() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={dialogMode === "mapping"} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>新增 User Department Mapping</DialogTitle></DialogHeader>
-          <form className="grid gap-4" onSubmit={submitMapping}>
-            <Field label="使用者"><Select value={mappingForm.userId} onChange={(value) => setMappingForm({ ...mappingForm, userId: value })} options={userOptions(users, "請選擇")} required /></Field>
-            <Field label="部門/團隊"><Select value={mappingForm.organizationId} onChange={(value) => setMappingForm({ ...mappingForm, organizationId: value })} options={unitOptions(units, "請選擇")} required /></Field>
-            <Field label="職位"><Select value={mappingForm.positionId ?? ""} onChange={(value) => setMappingForm({ ...mappingForm, positionId: value || null })} options={positionOptions(positions, "不指定")} /></Field>
-            <label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={mappingForm.isPrimary} onChange={(event) => setMappingForm({ ...mappingForm, isPrimary: event.target.checked })} />主要部門</label>
-            <DialogActions onCancel={closeDialog} />
-          </form>
-        </DialogContent>
-      </Dialog>
+      <Dialog
+        open={pendingDeleteUnit !== null}
+        onOpenChange={(open) => {
+          if (!open && !isDeletingUnit) setPendingDeleteUnit(null);
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader><DialogTitle>確認刪除組織</DialogTitle></DialogHeader>
+          {pendingDeleteUnit ? (
+            <div className="grid gap-4">
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">
+                確定要刪除「{pendingDeleteUnit.name}（{pendingDeleteUnit.code}）」嗎？此操作會採用軟刪除。
+              </div>
 
-      <Dialog open={dialogMode === "manager"} onOpenChange={(open) => !open && closeDialog()}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>新增 Manager / Employee 關係</DialogTitle></DialogHeader>
-          <form className="grid gap-4" onSubmit={submitManager}>
-            <Field label="Manager"><Select value={managerForm.managerUserId} onChange={(value) => setManagerForm({ ...managerForm, managerUserId: value })} options={userOptions(users, "請選擇")} required /></Field>
-            <Field label="Employee"><Select value={managerForm.employeeUserId} onChange={(value) => setManagerForm({ ...managerForm, employeeUserId: value })} options={userOptions(users, "請選擇")} required /></Field>
-            <Field label="組織"><Select value={managerForm.organizationId ?? ""} onChange={(value) => setManagerForm({ ...managerForm, organizationId: value || null })} options={unitOptions(units, "不指定")} /></Field>
-            <Field label="關係"><Input value={managerForm.relationType} onChange={(event) => setManagerForm({ ...managerForm, relationType: event.target.value })} /></Field>
-            <DialogActions onCancel={closeDialog} />
-          </form>
+              {pendingDeleteDescendants.length > 0 ? (
+                <div className="grid gap-2">
+                  <div className="text-sm font-semibold text-slate-800">
+                    下列 {pendingDeleteDescendants.length} 個子組織也會一併刪除：
+                  </div>
+                  <div className="max-h-64 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2">
+                    <ul className="grid gap-1">
+                      {pendingDeleteDescendants.map((unit) => (
+                        <li key={unit.id} className="rounded bg-white px-3 py-2 text-sm text-slate-700 shadow-sm">
+                          <span className="font-medium">{unit.name}</span>
+                          <span className="ml-2 text-xs text-slate-500">{unit.code} · {unit.path}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-600">此組織沒有有效的子組織。</p>
+              )}
+
+              <p className="text-xs leading-5 text-slate-500">
+                屬於這些組織的使用者會改為未指定組織，相關的組織角色範圍也會解除。
+              </p>
+              <div className="flex justify-end gap-2 border-t pt-4">
+                <Button type="button" variant="outline" disabled={isDeletingUnit} onClick={() => setPendingDeleteUnit(null)}>取消</Button>
+                <Button type="button" variant="destructive" disabled={isDeletingUnit} onClick={() => void confirmDeleteUnit()}>
+                  {isDeletingUnit ? "刪除中…" : pendingDeleteDescendants.length > 0 ? `刪除全部 ${pendingDeleteDescendants.length + 1} 個組織` : "確認刪除"}
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 
@@ -571,9 +487,9 @@ function Panel({ title, action, children }: { title: string; action?: ReactNode;
   );
 }
 
-function Field({ label, hint, error, children }: { label: string; hint?: string; error?: string; children: ReactNode }) {
+function Field({ label, hint, error, className, children }: { label: string; hint?: string; error?: string; className?: string; children: ReactNode }) {
   return (
-    <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+    <label className={cn("grid min-w-0 content-start gap-1.5 text-sm font-medium text-slate-700", className)}>
       <span>{label}</span>
       {children}
       {error ? <span className="text-xs font-normal leading-5 text-red-600">{error}</span> : null}
@@ -591,14 +507,14 @@ function DialogActions({ onCancel, className }: { onCancel: () => void; classNam
   );
 }
 
-function getCodeMinLengthError(code: string, fieldName: string) {
-  if (code.trim().length >= 2) return "";
-  return `${fieldName}請至少輸入 2 碼。`;
+function getOrganizationCodeError(code: string) {
+  if (/^[A-Za-z]{2}$/.test(code.trim())) return "";
+  return "組織代碼必須是兩碼英文字母。";
 }
 
 function Select({ value, onChange, options, required = false }: { value: string; onChange: (value: string) => void; options: Array<[string, string]>; required?: boolean }) {
   return (
-    <select className="h-9 rounded-md border px-3 text-sm" value={value} onChange={(event) => onChange(event.target.value)} required={required}>
+    <select className="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm outline-none transition-colors focus-visible:ring-1 focus-visible:ring-ring" value={value} onChange={(event) => onChange(event.target.value)} required={required}>
       {options.map(([optionValue, label]) => <option key={`${optionValue}-${label}`} value={optionValue}>{label}</option>)}
     </select>
   );
@@ -641,10 +557,6 @@ function unitOptions(units: OrganizationUnit[], emptyLabel: string): Array<[stri
   return [["", emptyLabel], ...units.map((unit) => [unit.id, `${unit.name} (${unit.unitType})`] as [string, string])];
 }
 
-function positionOptions(positions: Position[], emptyLabel: string): Array<[string, string]> {
-  return [["", emptyLabel], ...positions.map((position) => [position.id, position.name] as [string, string])];
-}
-
 function userOptions(users: MembershipUser[], emptyLabel: string): Array<[string, string]> {
   return [["", emptyLabel], ...users.map((user) => [user.id, `${user.displayName} (${user.username})`] as [string, string])];
 }
@@ -669,6 +581,21 @@ function getOrganizationAndChildIds(units: OrganizationUnit[], organizationId: s
   return ids;
 }
 
+function getDescendantUnits(units: OrganizationUnit[], organizationId: string) {
+  const descendants: OrganizationUnit[] = [];
+  const collectChildren = (parentId: string) => {
+    units
+      .filter((unit) => unit.parentId === parentId)
+      .sort((left, right) => left.name.localeCompare(right.name, "zh-TW"))
+      .forEach((unit) => {
+        descendants.push(unit);
+        collectChildren(unit.id);
+      });
+  };
+  collectChildren(organizationId);
+  return descendants;
+}
+
 function flattenTree(units: OrganizationUnit[]): OrganizationUnit[] {
   return units.flatMap((unit) => [unit, ...flattenTree(unit.children ?? [])]);
 }
@@ -682,18 +609,15 @@ function toUnitForm(unit: OrganizationUnit): OrganizationUnitPayload {
     companyId: unit.companyId,
     managerUserId: unit.managerUserId,
     description: unit.description,
-    sortOrder: unit.sortOrder,
     status: unit.status,
   };
 }
 
 function toPositionForm(position: Position): PositionPayload {
   return {
-    code: position.code,
     name: position.name,
     description: position.description,
     level: position.level,
-    sortOrder: position.sortOrder,
     status: position.status,
   };
 }
