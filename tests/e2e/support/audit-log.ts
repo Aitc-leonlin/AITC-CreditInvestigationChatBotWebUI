@@ -28,15 +28,15 @@ export const backendURL = process.env.PLAYWRIGHT_BACKEND_URL ?? "http://127.0.0.
 export async function loginAsAuditAdmin(request: APIRequestContext): Promise<string> {
   const response = await request.post(`${backendURL}/api/membership/auth/login`, {
     data: {
-      login: process.env.E2E_ADMIN_LOGIN ?? "system.admin",
-      password: process.env.E2E_ADMIN_PASSWORD ?? "Admin123!",
+      login: process.env.E2E_TEST_LOGIN ?? "playwrighttestuser",
+      password: process.env.E2E_TEST_PASSWORD ?? "PlaywrightTest123!",
       rememberMe: false,
     },
   });
   const body = (await response.json()) as ApiEnvelope<LoginResult>;
   expect(
     response.ok() && body.success && Boolean(body.data?.accessToken),
-    body.error?.message ?? "E2E 管理員登入失敗，請確認 E2E_ADMIN_LOGIN/E2E_ADMIN_PASSWORD。",
+    body.error?.message ?? "E2E 測試帳號登入失敗，請確認 setup 與 E2E_TEST_LOGIN/E2E_TEST_PASSWORD。",
   ).toBe(true);
   return body.data!.accessToken;
 }

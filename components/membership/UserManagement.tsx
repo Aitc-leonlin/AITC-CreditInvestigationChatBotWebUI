@@ -26,6 +26,7 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
 import MembershipStatusChip from "@/components/membership/MembershipStatusChip";
 import {
   Dialog,
@@ -162,6 +163,8 @@ export default function UserManagement() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [dialogMode, setDialogMode] = useState<UserDialogMode | null>(null);
   const [selectedUser, setSelectedUser] = useState<MembershipUser | null>(null);
+  const [pendingDeleteUser, setPendingDeleteUser] = useState<MembershipUser | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
   const [form, setForm] = useState<UserFormState>(DEFAULT_FORM_STATE);
 
   useEffect(() => {
@@ -303,6 +306,21 @@ export default function UserManagement() {
       toast.error(error instanceof Error ? error.message : "使用者操作失敗");
     }
   }, [loadUsers]);
+
+  async function confirmDeleteUser() {
+    if (!pendingDeleteUser || isDeletingUser) return;
+    try {
+      setIsDeletingUser(true);
+      await deleteMembershipUser(pendingDeleteUser.id);
+      toast.success("已刪除帳號");
+      setPendingDeleteUser(null);
+      await loadUsers();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "刪除帳號失敗");
+    } finally {
+      setIsDeletingUser(false);
+    }
+  }
 
   async function handleRequestEmailVerification() {
     try {
@@ -450,7 +468,7 @@ export default function UserManagement() {
               ) : null
             )}
             {canWriteUsers ? (
-              <IconAction title="刪除" danger onClick={() => handleUserAction(() => deleteMembershipUser(params.row.id), "已刪除帳號")}>
+              <IconAction title="刪除" danger onClick={() => setPendingDeleteUser(params.row)}>
                 <Trash2 className="h-4 w-4" />
               </IconAction>
             ) : null}
@@ -561,6 +579,16 @@ export default function UserManagement() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmationDialog
+        open={pendingDeleteUser !== null}
+        title="確認刪除使用者"
+        description={pendingDeleteUser ? <>確定要刪除「{pendingDeleteUser.displayName}（{pendingDeleteUser.username}）」嗎？此操作會採用軟刪除。</> : null}
+        detail="刪除後，此帳號將無法登入，並不再顯示於使用者清單。"
+        isDeleting={isDeletingUser}
+        onCancel={() => setPendingDeleteUser(null)}
+        onConfirm={() => void confirmDeleteUser()}
+      />
     </main>
   );
 }

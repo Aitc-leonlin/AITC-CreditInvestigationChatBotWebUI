@@ -7,9 +7,14 @@
 執行前請先啟動後端（預設 `http://127.0.0.1:3001`），且只可使用測試環境資料庫：
 
 ```bash
-E2E_ADMIN_LOGIN=system.admin \
-E2E_ADMIN_PASSWORD='Admin123!' \
+E2E_BOOTSTRAP_ADMIN_LOGIN=system.admin \
+E2E_BOOTSTRAP_ADMIN_PASSWORD='system admin 密碼' \
+E2E_TEST_LOGIN=playwrighttestuser \
+E2E_TEST_PASSWORD='PlaywrightTest123!' \
 npm run test:e2e -- tests/e2e/membership/audit
 ```
+
+system admin 只由 `setup` project 用來建立／同步測試帳號；Audit Log 的實際 WEB 操作由
+`playwrighttestuser` 執行。
 
 若後端不在預設位置，另設定 `PLAYWRIGHT_BACKEND_URL`。未自動化案例集中於 `audit-actions.manual.spec.ts`，執行報告會顯示為 skipped。

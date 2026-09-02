@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 
 import { WidgetPermission } from "@/components/membership/authorization";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   type AdminDashboard,
   fetchMembershipAdminDashboard,
@@ -83,6 +85,7 @@ export default function MembershipDashboard() {
   const [resetMessage, setResetMessage] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isResetting, setIsResetting] = useState(false);
+  const [resetConfirmationOpen, setResetConfirmationOpen] = useState(false);
 
   async function loadDashboard() {
     setIsLoading(true);
@@ -120,10 +123,7 @@ export default function MembershipDashboard() {
   }, []);
 
   async function handleResetSeed() {
-    const confirmed = window.confirm(
-      "警告：這會清空目前所有 MEMBERSHIP_ 開頭資料表的資料，並用 SEED 重新建立預設資料。此操作會移除現有會員、角色、授權、登入紀錄與通知資料。確定要執行嗎？",
-    );
-    if (!confirmed) return;
+    if (isResetting) return;
 
     setIsResetting(true);
     setError("");
@@ -131,6 +131,7 @@ export default function MembershipDashboard() {
     try {
       const result = await resetMembershipSeedData();
       setResetMessage(`已清空 ${result.clearedTableCount} 張 membership table，並重新寫入 SEED 資料。`);
+      setResetConfirmationOpen(false);
       await loadDashboard();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "SEED 重建失敗");
@@ -167,7 +168,7 @@ export default function MembershipDashboard() {
           <WidgetPermission permission={MODULE_PERMISSIONS.rbacDelete}>
             <button
               type="button"
-              onClick={handleResetSeed}
+              onClick={() => setResetConfirmationOpen(true)}
               disabled={isResetting}
               className="inline-flex items-center justify-center gap-2 rounded-md border border-rose-700 bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
@@ -262,6 +263,43 @@ export default function MembershipDashboard() {
           })}
         </section> */}
       </div>
+
+      <Dialog
+        open={resetConfirmationOpen}
+        onOpenChange={(open) => {
+          if (!open && !isResetting) setResetConfirmationOpen(false);
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader><DialogTitle>確認清空並重建會員資料</DialogTitle></DialogHeader>
+          <div className="grid gap-4">
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">
+              警告：這會清空目前所有 MEMBERSHIP_ 開頭資料表的資料，並用 SEED 重新建立預設資料。
+            </div>
+            <p className="text-sm leading-6 text-slate-600">
+              此操作會移除現有會員、角色、授權、登入紀錄與通知資料，且會立即影響目前使用者。
+            </p>
+            <div className="flex justify-end gap-2 border-t pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isResetting}
+                onClick={() => setResetConfirmationOpen(false)}
+              >
+                取消
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={isResetting}
+                onClick={() => void handleResetSeed()}
+              >
+                {isResetting ? "重建中…" : "確認清空並重建"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

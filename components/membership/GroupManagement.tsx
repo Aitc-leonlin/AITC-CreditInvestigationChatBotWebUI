@@ -72,6 +72,8 @@ export default function GroupManagement() {
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set());
   const [selectedExistingMemberIds, setSelectedExistingMemberIds] = useState<Set<string>>(new Set());
   const [isSavingGroup, setIsSavingGroup] = useState(false);
+  const [pendingDeleteGroup, setPendingDeleteGroup] = useState<MembershipGroup | null>(null);
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false);
   const editorScrollRef = useRef<HTMLDivElement>(null);
   const savedEditorScrollTopRef = useRef(0);
 
@@ -208,15 +210,23 @@ export default function GroupManagement() {
     setSaveConfirmationOpen(false);
   }
 
-  async function removeGroup(group: MembershipGroup) {
-    if (!window.confirm(`確定刪除群組「${group.name}」？`)) return;
+  function openDeleteGroup(group: MembershipGroup) {
+    setPendingDeleteGroup(group);
+  }
+
+  async function confirmDeleteGroup() {
+    if (!pendingDeleteGroup || isDeletingGroup) return;
     try {
-      await deleteMembershipGroup(group.id);
+      setIsDeletingGroup(true);
+      await deleteMembershipGroup(pendingDeleteGroup.id);
       toast.success("群組已刪除");
       setSelectedGroup(null);
+      setPendingDeleteGroup(null);
       await loadGroups();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "刪除群組失敗");
+    } finally {
+      setIsDeletingGroup(false);
     }
   }
 
@@ -366,7 +376,7 @@ export default function GroupManagement() {
           {params.row.canEditGroup ? (
             <>
               <Button type="button" variant="ghost" size="icon" aria-label={`編輯 ${params.row.name}`} onClick={(event) => { event.stopPropagation(); void openEditGroup(params.row); }}><Pencil className="h-4 w-4" /></Button>
-              <Button type="button" variant="ghost" size="icon" className="text-rose-600" aria-label={`刪除 ${params.row.name}`} onClick={(event) => { event.stopPropagation(); void removeGroup(params.row); }}><Trash2 className="h-4 w-4" /></Button>
+              <Button type="button" variant="ghost" size="icon" className="text-rose-600" aria-label={`刪除 ${params.row.name}`} onClick={(event) => { event.stopPropagation(); openDeleteGroup(params.row); }}><Trash2 className="h-4 w-4" /></Button>
             </>
           ) : null}
         </div>
@@ -474,6 +484,45 @@ export default function GroupManagement() {
               </div>
               <div className="min-h-0 flex-1 px-6 py-4">
                 <DataGrid rows={selectedGroup.members} columns={readOnlyMemberColumns} disableRowSelectionOnClick pageSizeOptions={[10, 20, 50]} initialState={{ pagination: { paginationModel: { pageSize: 10, page: 0 } } }} slotProps={DATA_GRID_PAGINATION_SLOT_PROPS} localeText={{ noRowsLabel: "此群組尚無組員" }} />
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={pendingDeleteGroup !== null}
+        onOpenChange={(open) => {
+          if (!open && !isDeletingGroup) setPendingDeleteGroup(null);
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader><DialogTitle>確認刪除群組</DialogTitle></DialogHeader>
+          {pendingDeleteGroup ? (
+            <div className="grid gap-4">
+              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">
+                確定要刪除群組「{pendingDeleteGroup.name}（{pendingDeleteGroup.code}）」嗎？此操作會採用軟刪除。
+              </div>
+              <p className="text-sm leading-6 text-slate-600">
+                群組刪除後，現有組員關聯也會一併停用，使用者將無法再檢視或管理此群組。
+              </p>
+              <div className="flex justify-end gap-2 border-t pt-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={isDeletingGroup}
+                  onClick={() => setPendingDeleteGroup(null)}
+                >
+                  取消
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={isDeletingGroup}
+                  onClick={() => void confirmDeleteGroup()}
+                >
+                  {isDeletingGroup ? "刪除中…" : "確認刪除"}
+                </Button>
               </div>
             </div>
           ) : null}

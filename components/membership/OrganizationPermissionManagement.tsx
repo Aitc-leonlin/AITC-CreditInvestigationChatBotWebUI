@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import MembershipStatusChip from "@/components/membership/MembershipStatusChip";
@@ -81,6 +82,8 @@ export default function OrganizationPermissionManagement() {
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [pendingDeleteUnit, setPendingDeleteUnit] = useState<OrganizationUnit | null>(null);
   const [isDeletingUnit, setIsDeletingUnit] = useState(false);
+  const [pendingDeletePosition, setPendingDeletePosition] = useState<Position | null>(null);
+  const [isDeletingPosition, setIsDeletingPosition] = useState(false);
   const [unitForm, setUnitForm] = useState<OrganizationUnitPayload>(UNIT_EMPTY);
   const [positionForm, setPositionForm] = useState<PositionPayload>(POSITION_EMPTY);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -197,6 +200,29 @@ export default function OrganizationPermissionManagement() {
     }
   }
 
+  function openDeletePosition(position: Position) {
+    if (!canDelete) {
+      toast.error("目前帳號沒有 organization-scope.delete 權限。");
+      return;
+    }
+    setPendingDeletePosition(position);
+  }
+
+  async function confirmDeletePosition() {
+    if (!pendingDeletePosition || isDeletingPosition) return;
+    try {
+      setIsDeletingPosition(true);
+      await deletePosition(pendingDeletePosition.id);
+      toast.success("已刪除職位");
+      setPendingDeletePosition(null);
+      await loadAll();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "刪除職位失敗");
+    } finally {
+      setIsDeletingPosition(false);
+    }
+  }
+
   function updateUnitFormWithManagerScope(nextForm: OrganizationUnitPayload) {
     const nextScopeId = selectedUnit?.id ?? nextForm.parentId ?? nextForm.companyId ?? "";
     const nextManagerUsers = filterUsersByOrganization(users, units, nextScopeId);
@@ -302,7 +328,7 @@ export default function OrganizationPermissionManagement() {
       renderCell: (params: GridRenderCellParams<Position>) => (
         <div className="flex h-full items-center gap-1.5">
           {canEdit ? <IconButton title="編輯" onClick={() => openPosition(params.row)}><Pencil className="h-4 w-4" /></IconButton> : null}
-          {canDelete ? <IconButton title="刪除" danger onClick={() => void deletePosition(params.row.id).then(loadAll).catch((error) => toast.error(error.message))}><Trash2 className="h-4 w-4" /></IconButton> : null}
+          {canDelete ? <IconButton title="刪除" danger onClick={() => openDeletePosition(params.row)}><Trash2 className="h-4 w-4" /></IconButton> : null}
         </div>
       ),
     },
@@ -470,6 +496,16 @@ export default function OrganizationPermissionManagement() {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmationDialog
+        open={pendingDeletePosition !== null}
+        title="確認刪除職位"
+        description={pendingDeletePosition ? <>確定要刪除職位「{pendingDeletePosition.name}」嗎？此操作會採用軟刪除。</> : null}
+        detail="刪除後，此職位將不再顯示於職位清單，也無法再指派給使用者。"
+        isDeleting={isDeletingPosition}
+        onCancel={() => setPendingDeletePosition(null)}
+        onConfirm={() => void confirmDeletePosition()}
+      />
 
     </main>
   );

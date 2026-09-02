@@ -36,6 +36,7 @@ import {
   type GridColDef,
   type GridRenderCellParams,
   type GridPaginationModel,
+  type GridRowSelectionModel,
 } from "@mui/x-data-grid";
 import { toast } from "sonner";
 
@@ -68,6 +69,7 @@ import {
 } from "@/services/api/warehouseDataApi";
 import { cn } from "@/utils/cn";
 import { Button } from "@/components/ui/button";
+import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
 import {
   Dialog,
   DialogContent,
@@ -197,6 +199,11 @@ export function WarehouseDataManager() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<WarehouseDataEntry | null>(null);
   const [detailEntry, setDetailEntry] = useState<WarehouseDataEntry | null>(null);
+  const [pendingDeleteEntry, setPendingDeleteEntry] = useState<WarehouseDataEntry | null>(null);
+  const [isDeletingEntry, setIsDeletingEntry] = useState(false);
+  const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set());
+  const [isBatchDeleteOpen, setIsBatchDeleteOpen] = useState(false);
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false);
   const [category, setCategory] = useState<WarehouseDataCategory>(
     DEFAULT_WAREHOUSE_DATA_CATEGORY,
   );
@@ -215,6 +222,7 @@ export function WarehouseDataManager() {
   const canAdd = hasPermission(MODULE_PERMISSIONS.creditAiWarehouseDataAdd);
   const canEdit = hasPermission(MODULE_PERMISSIONS.creditAiWarehouseDataEdit);
   const canDelete = hasPermission(MODULE_PERMISSIONS.creditAiWarehouseDataDelete);
+  const selectedEntries = entries.filter((entry) => selectedEntryIds.has(entry.id));
 
   const columns: GridColDef<WarehouseDataEntry>[] = [
     {
@@ -523,6 +531,10 @@ export function WarehouseDataManager() {
   ]);
 
   useEffect(() => {
+    setSelectedEntryIds(new Set());
+  }, [debouncedSearchKeyword, paginationModel.page, paginationModel.pageSize, selectedCategory]);
+
+  useEffect(() => {
     if (!industry) {
       setCompanyLabel("");
       return;
@@ -546,18 +558,24 @@ export function WarehouseDataManager() {
     setCompanyLabel(companyOptions[0]?.label ?? "");
   }, [companyLabel, companyOptions, industry, selectedCompanyLabel]);
 
-  async function handleDelete(entryId: string) {
+  function handleDelete(entryId: string) {
     const targetEntry = entries.find((entry) => entry.id === entryId);
     if (!targetEntry) return;
+    setPendingDeleteEntry(targetEntry);
+  }
 
-    const shouldDelete = window.confirm(
-      `確定要刪除「${targetEntry.title}」這筆資料嗎？`,
-    );
-    if (!shouldDelete) return;
-
+  async function confirmDeleteEntry() {
+    if (!pendingDeleteEntry || isDeletingEntry) return;
     try {
-      await deleteWarehouseDataEntry(entryId);
+      setIsDeletingEntry(true);
+      await deleteWarehouseDataEntry(pendingDeleteEntry.id);
       toast.success("已刪除資料");
+      setSelectedEntryIds((current) => {
+        const next = new Set(current);
+        next.delete(pendingDeleteEntry.id);
+        return next;
+      });
+      setPendingDeleteEntry(null);
       if (entries.length === 1 && paginationModel.page > 0) {
         setPaginationModel((current) => ({
           ...current,
@@ -568,6 +586,36 @@ export function WarehouseDataManager() {
       await loadEntries();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "刪除資料失敗");
+    } finally {
+      setIsDeletingEntry(false);
+    }
+  }
+
+  async function confirmBatchDelete() {
+    if (selectedEntries.length === 0 || isBatchDeleting) return;
+    const targets = [...selectedEntries];
+    try {
+      setIsBatchDeleting(true);
+      const results = await Promise.allSettled(
+        targets.map((entry) => deleteWarehouseDataEntry(entry.id)),
+      );
+      const failedCount = results.filter((result) => result.status === "rejected").length;
+      const deletedCount = targets.length - failedCount;
+
+      setIsBatchDeleteOpen(false);
+      setSelectedEntryIds(new Set());
+      if (deletedCount > 0) toast.success(`已刪除 ${deletedCount} 筆資料`);
+      if (failedCount > 0) toast.error(`${failedCount} 筆資料刪除失敗，請重新確認`);
+
+      if (deletedCount === entries.length && paginationModel.page > 0) {
+        setPaginationModel((current) => ({ ...current, page: current.page - 1 }));
+      } else {
+        await loadEntries();
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "批次刪除資料失敗");
+    } finally {
+      setIsBatchDeleting(false);
     }
   }
 
@@ -700,6 +748,18 @@ export function WarehouseDataManager() {
                 />
               </div>
 
+              {canDelete ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={selectedEntries.length === 0}
+                  onClick={() => setIsBatchDeleteOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  批次刪除（{selectedEntries.length}）
+                </Button>
+              ) : null}
+
               {canAdd ? (
                 <Button
                   type="button"
@@ -730,7 +790,10 @@ export function WarehouseDataManager() {
                 rows={entries}
                 columns={columns}
                 loading={isLoadingEntries}
+                checkboxSelection={canDelete}
                 disableRowSelectionOnClick
+                rowSelectionModel={{ type: "include", ids: selectedEntryIds }}
+                onRowSelectionModelChange={(model) => setSelectedEntryIds(resolveSelectedRowIds(model, entries.map((entry) => entry.id)))}
                 disableColumnFilter
                 disableDensitySelector
                 disableColumnSelector
@@ -991,7 +1054,76 @@ export function WarehouseDataManager() {
             ) : null}
           </DialogContent>
         </Dialog>
+
+        <Dialog
+          open={pendingDeleteEntry !== null}
+          onOpenChange={(open) => {
+            if (!open && !isDeletingEntry) setPendingDeleteEntry(null);
+          }}
+        >
+          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
+            <DialogHeader><DialogTitle>確認刪除資料</DialogTitle></DialogHeader>
+            {pendingDeleteEntry ? (
+              <div className="grid gap-4">
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm leading-6 text-red-800">
+                  確定要刪除「{pendingDeleteEntry.title}」這筆資料嗎？此操作會採用軟刪除。
+                </div>
+                <p className="text-sm leading-6 text-slate-600">
+                  刪除後，這筆資料將不再顯示於資料倉儲清單，也不會再提供給後續查詢使用。
+                </p>
+                <div className="flex justify-end gap-2 border-t pt-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={isDeletingEntry}
+                    onClick={() => setPendingDeleteEntry(null)}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    disabled={isDeletingEntry}
+                    onClick={() => void confirmDeleteEntry()}
+                  >
+                    {isDeletingEntry ? "刪除中…" : "確認刪除"}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+
+        <DeleteConfirmationDialog
+          open={isBatchDeleteOpen}
+          title="確認批次刪除資料"
+          description={<>確定要刪除目前選取的 {selectedEntries.length} 筆資料嗎？此操作會採用軟刪除。</>}
+          detail={
+            <div className="grid gap-2">
+              <div>即將刪除：</div>
+              <ul className="max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2 text-sm text-slate-700">
+                {selectedEntries.map((entry) => (
+                  <li key={entry.id} className="rounded bg-white px-3 py-2 [&+&]:mt-1">
+                    {entry.title || "未設定標題"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          }
+          isDeleting={isBatchDeleting}
+          confirmLabel={`確認刪除 ${selectedEntries.length} 筆`}
+          onCancel={() => setIsBatchDeleteOpen(false)}
+          onConfirm={() => void confirmBatchDelete()}
+        />
       </div>
     </div>
   );
+}
+
+function resolveSelectedRowIds(model: GridRowSelectionModel, rowIds: string[]) {
+  const modelIds = new Set(Array.from(model.ids).map(String));
+  if (model.type === "exclude") {
+    return new Set(rowIds.filter((rowId) => !modelIds.has(rowId)));
+  }
+  return modelIds;
 }

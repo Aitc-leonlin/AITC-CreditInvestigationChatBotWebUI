@@ -7,6 +7,7 @@ import { ChevronDown, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import MembershipStatusChip from "@/components/membership/MembershipStatusChip";
@@ -47,6 +48,8 @@ export default function RoleManagement() {
   const [selectedRole, setSelectedRole] = useState<Role | null>(null);
   const [roleForm, setRoleForm] = useState<RolePayload>(EMPTY_ROLE);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [pendingDeleteRole, setPendingDeleteRole] = useState<Role | null>(null);
+  const [isDeletingRole, setIsDeletingRole] = useState(false);
   const [selectedPermissionIds, setSelectedPermissionIds] = useState<Set<string>>(new Set());
   const [expandedPermissionSectionIds, setExpandedPermissionSectionIds] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(false);
@@ -137,17 +140,26 @@ export default function RoleManagement() {
     }
   }
 
-  async function handleDelete(role: Role) {
+  function openDeleteRole(role: Role) {
     if (!canDelete) {
       toast.error("目前帳號沒有 rbac.delete 權限。");
       return;
     }
+    setPendingDeleteRole(role);
+  }
+
+  async function confirmDeleteRole() {
+    if (!pendingDeleteRole || isDeletingRole) return;
     try {
-      await deleteRole(role.id);
+      setIsDeletingRole(true);
+      await deleteRole(pendingDeleteRole.id);
       toast.success("已刪除角色");
+      setPendingDeleteRole(null);
       await loadData();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "刪除角色失敗");
+    } finally {
+      setIsDeletingRole(false);
     }
   }
 
@@ -277,7 +289,7 @@ export default function RoleManagement() {
                 </IconButton>
             ) : null}
             {canDelete && !params.row.isSystem ? (
-              <IconButton title="刪除" danger onClick={() => void handleDelete(params.row)}>
+              <IconButton title="刪除" danger onClick={() => openDeleteRole(params.row)}>
                 <Trash2 className="h-4 w-4" />
               </IconButton>
             ) : null}
@@ -433,6 +445,16 @@ export default function RoleManagement() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <DeleteConfirmationDialog
+        open={pendingDeleteRole !== null}
+        title="確認刪除角色"
+        description={pendingDeleteRole ? <>確定要刪除角色「{pendingDeleteRole.name}」嗎？此操作會採用軟刪除。</> : null}
+        detail={pendingDeleteRole ? `目前有 ${pendingDeleteRole.userCount} 位使用者套用此角色；刪除後將無法再以此角色進行授權。` : null}
+        isDeleting={isDeletingRole}
+        onCancel={() => setPendingDeleteRole(null)}
+        onConfirm={() => void confirmDeleteRole()}
+      />
     </main>
   );
 }

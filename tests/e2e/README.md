@@ -23,6 +23,16 @@ npm run test:e2e:headed
 npm run test:e2e:report
 ```
 
+UI mode 會同時列出 `setup` 與 `chromium` projects。第一次開啟時，先手動執行
+`auth.setup.ts` 產生測試帳號登入狀態，再執行其他 `.spec.ts`。新增測試流程時，將
+`*.spec.ts` 放在 `tests/e2e` 底下任一非 `setup` 目錄，重新開啟或重新整理 UI 即可。
+
 預設測試 `http://127.0.0.1:3000`。如需測試其他環境，可設定 `PLAYWRIGHT_BASE_URL`。
+
+執行測試時，`setup` project 會先以 `E2E_BOOTSTRAP_ADMIN_LOGIN` 建立或同步
+`E2E_TEST_LOGIN`（預設 `playwrighttestuser`），並將 system admin 的角色完整套用給測試帳號。
+setup 隨後會登入測試帳號並輸出 `storageState`；`chromium` project 的其餘 `.spec.ts`
+會載入該登入狀態，只使用 `E2E_TEST_LOGIN` 執行管理操作，不會拿 system admin 作為測試行為帳號。
+若測試帳號已存在，setup 只會重設該測試帳號的密碼、啟用／解鎖狀態及角色。
 
 涉及新增、修改、刪除資料的測試，應使用獨立測試資料庫或專用測試帳號，不可直接對正式環境執行。

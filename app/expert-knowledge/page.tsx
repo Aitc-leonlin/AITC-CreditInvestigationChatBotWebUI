@@ -25,11 +25,13 @@ import {
   type GridColDef,
   type GridRenderCellParams,
   type GridPaginationModel,
+  type GridRowSelectionModel,
 } from "@mui/x-data-grid";
 import { CalendarClock, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import DeleteConfirmationDialog from "@/components/DeleteConfirmationDialog";
 import { MembershipRouteGuard } from "@/components/membership/authorization";
 import { useMembershipPermissions } from "@/hooks/useMembershipPermissions";
 import {
@@ -120,6 +122,11 @@ function ExpertKnowledgeContent() {
   const { hasPermission } = useMembershipPermissions();
   const [entries, setEntries] = useState<ExpertKnowledgeEntry[]>([]);
   const [detailEntry, setDetailEntry] = useState<ExpertKnowledgeEntry | null>(null);
+  const [pendingDeleteEntry, setPendingDeleteEntry] = useState<ExpertKnowledgeEntry | null>(null);
+  const [isDeletingEntry, setIsDeletingEntry] = useState(false);
+  const [selectedEntryIds, setSelectedEntryIds] = useState<Set<string>>(new Set());
+  const [isBatchDeleteOpen, setIsBatchDeleteOpen] = useState(false);
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState("");
   const [debouncedSearchKeyword, setDebouncedSearchKeyword] = useState("");
   const [paginationModel, setPaginationModel] = useState<GridPaginationModel>({
@@ -131,6 +138,7 @@ function ExpertKnowledgeContent() {
   const canAdd = hasPermission(MODULE_PERMISSIONS.creditAiExpertKnowledgeAdd);
   const canEdit = hasPermission(MODULE_PERMISSIONS.creditAiExpertKnowledgeEdit);
   const canDelete = hasPermission(MODULE_PERMISSIONS.creditAiExpertKnowledgeDelete);
+  const selectedEntries = entries.filter((entry) => selectedEntryIds.has(entry.id));
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -173,10 +181,22 @@ function ExpertKnowledgeContent() {
     };
   }, [debouncedSearchKeyword, paginationModel.page, paginationModel.pageSize]);
 
-  async function handleDelete(entryId: string) {
+  useEffect(() => {
+    setSelectedEntryIds(new Set());
+  }, [debouncedSearchKeyword, paginationModel.page, paginationModel.pageSize]);
+
+  async function confirmDeleteEntry() {
+    if (!pendingDeleteEntry || isDeletingEntry) return;
     try {
-      await deleteExpertKnowledgeEntry(entryId);
+      setIsDeletingEntry(true);
+      await deleteExpertKnowledgeEntry(pendingDeleteEntry.id);
       toast.success("已刪除專家指引");
+      setSelectedEntryIds((current) => {
+        const next = new Set(current);
+        next.delete(pendingDeleteEntry.id);
+        return next;
+      });
+      setPendingDeleteEntry(null);
       if (entries.length === 1 && paginationModel.page > 0) {
         setPaginationModel((current) => ({
           ...current,
@@ -195,6 +215,42 @@ function ExpertKnowledgeContent() {
       toast.error(
         error instanceof Error ? error.message : "刪除專家指引失敗",
       );
+    } finally {
+      setIsDeletingEntry(false);
+    }
+  }
+
+  async function confirmBatchDelete() {
+    if (selectedEntries.length === 0 || isBatchDeleting) return;
+    const targets = [...selectedEntries];
+    try {
+      setIsBatchDeleting(true);
+      const results = await Promise.allSettled(
+        targets.map((entry) => deleteExpertKnowledgeEntry(entry.id)),
+      );
+      const failedCount = results.filter((result) => result.status === "rejected").length;
+      const deletedCount = targets.length - failedCount;
+
+      setIsBatchDeleteOpen(false);
+      setSelectedEntryIds(new Set());
+      if (deletedCount > 0) toast.success(`已刪除 ${deletedCount} 筆專家指引`);
+      if (failedCount > 0) toast.error(`${failedCount} 筆專家指引刪除失敗，請重新確認`);
+
+      if (deletedCount === entries.length && paginationModel.page > 0) {
+        setPaginationModel((current) => ({ ...current, page: current.page - 1 }));
+      } else {
+        const result = await fetchExpertKnowledgeEntries({
+          page: paginationModel.page,
+          pageSize: paginationModel.pageSize,
+          search: debouncedSearchKeyword,
+        });
+        setEntries(result.entries);
+        setRowCount(result.total);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "批次刪除專家指引失敗");
+    } finally {
+      setIsBatchDeleting(false);
     }
   }
 
@@ -334,7 +390,7 @@ function ExpertKnowledgeContent() {
               variant="ghost"
               size="icon"
               aria-label={`刪除 ${params.row.title}`}
-              onClick={() => handleDelete(params.row.id)}
+              onClick={() => setPendingDeleteEntry(params.row)}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -386,6 +442,18 @@ function ExpertKnowledgeContent() {
                 />
               </div>
 
+              {canDelete ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={selectedEntries.length === 0}
+                  onClick={() => setIsBatchDeleteOpen(true)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  批次刪除（{selectedEntries.length}）
+                </Button>
+              ) : null}
+
               {canAdd ? (
                 <Button
                   type="button"
@@ -418,7 +486,10 @@ function ExpertKnowledgeContent() {
                 rows={entries}
                 columns={columns}
                 loading={isLoading}
+                checkboxSelection={canDelete}
                 disableRowSelectionOnClick
+                rowSelectionModel={{ type: "include", ids: selectedEntryIds }}
+                onRowSelectionModelChange={(model) => setSelectedEntryIds(resolveSelectedRowIds(model, entries.map((entry) => entry.id)))}
                 disableColumnFilter
                 disableDensitySelector
                 disableColumnSelector
@@ -554,7 +625,47 @@ function ExpertKnowledgeContent() {
             ) : null}
           </DialogContent>
         </Dialog>
+
+        <DeleteConfirmationDialog
+          open={pendingDeleteEntry !== null}
+          title="確認刪除專家指引"
+          description={pendingDeleteEntry ? <>確定要刪除「{pendingDeleteEntry.title || "未命名專家指引"}」嗎？此操作會採用軟刪除。</> : null}
+          detail="刪除後，此指引將不再顯示於專家知識庫，也不會再提供給 AI 回答使用。"
+          isDeleting={isDeletingEntry}
+          onCancel={() => setPendingDeleteEntry(null)}
+          onConfirm={() => void confirmDeleteEntry()}
+        />
+
+        <DeleteConfirmationDialog
+          open={isBatchDeleteOpen}
+          title="確認批次刪除專家指引"
+          description={<>確定要刪除目前選取的 {selectedEntries.length} 筆專家指引嗎？此操作會採用軟刪除。</>}
+          detail={
+            <div className="grid gap-2">
+              <div>即將刪除：</div>
+              <ul className="max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2 text-sm text-slate-700">
+                {selectedEntries.map((entry) => (
+                  <li key={entry.id} className="rounded bg-white px-3 py-2 [&+&]:mt-1">
+                    {entry.title || "未命名專家指引"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          }
+          isDeleting={isBatchDeleting}
+          confirmLabel={`確認刪除 ${selectedEntries.length} 筆`}
+          onCancel={() => setIsBatchDeleteOpen(false)}
+          onConfirm={() => void confirmBatchDelete()}
+        />
       </div>
       </div>
   );
+}
+
+function resolveSelectedRowIds(model: GridRowSelectionModel, rowIds: string[]) {
+  const modelIds = new Set(Array.from(model.ids).map(String));
+  if (model.type === "exclude") {
+    return new Set(rowIds.filter((rowId) => !modelIds.has(rowId)));
+  }
+  return modelIds;
 }

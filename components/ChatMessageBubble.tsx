@@ -170,7 +170,11 @@ export function ChatMessageBubble(props: {
           </div>
         )}
 
-        <div className="whitespace-pre-wrap flex flex-col">
+        <div
+          className="whitespace-pre-wrap flex flex-col"
+          data-testid={`chat-message-${props.message.role}-content`}
+          data-message-content={props.message.content}
+        >
           {isThinking ? (
             <div
               className="flex min-h-8 items-center gap-2 text-muted-foreground"
