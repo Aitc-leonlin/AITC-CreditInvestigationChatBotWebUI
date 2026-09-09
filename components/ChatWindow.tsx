@@ -81,6 +81,7 @@ type PendingSubmission = {
   displayMessages: Message[];
   clearInputOnConfirm: boolean;
   externalDataQueryText: string;
+  workflowThreadId: string;
 };
 
 function getPeriodPromptValue(settings: ChatSettings) {
@@ -1174,6 +1175,7 @@ export function ChatWindow(props: {
       externalDataQueryText:
         pendingExternalDataQueryText || pendingSubmission.externalDataQueryText,
       externalDataDecision: "adopted",
+      workflowThreadId: pendingSubmission.workflowThreadId,
     });
   }
 
@@ -1197,6 +1199,7 @@ export function ChatWindow(props: {
       externalDataQueryText:
         pendingExternalDataQueryText || pendingSubmission.externalDataQueryText,
       externalDataDecision: "rejected",
+      workflowThreadId: pendingSubmission.workflowThreadId,
     });
   }
 
@@ -1233,6 +1236,7 @@ export function ChatWindow(props: {
       targetEndpoint?: string;
       externalDataQueryText?: string;
       externalDataDecision?: "adopted" | "rejected";
+      workflowThreadId?: string;
       clearInputOnConfirm?: boolean;
     },
   ) {
@@ -1369,6 +1373,7 @@ export function ChatWindow(props: {
         appliedWarehouseData: appliedWarehouseDataPayload,
         company: settings.company ?? "",
         conversationId: activeSessionId,
+        workflowThreadId: options?.workflowThreadId ?? assistantMessageId,
         ...(targetEndpoint === BACKEND_API_PATHS.chatWithExternal
           ? {
               appliedExternalData: appliedExternalDataPayload,
@@ -1441,6 +1446,10 @@ export function ChatWindow(props: {
           typeof json?.externalDataQueryText === "string"
             ? json.externalDataQueryText.trim()
             : "";
+        const workflowThreadId =
+          typeof json?.workflowThreadId === "string" && json.workflowThreadId.trim()
+            ? json.workflowThreadId.trim()
+            : options?.workflowThreadId ?? assistantMessageId;
         const assistantContent =
           typeof json?.answer === "string"
             ? json.answer
@@ -1528,6 +1537,7 @@ export function ChatWindow(props: {
         if (
           settings.useExternalData &&
           !options?.externalDataDecision &&
+          json?.pendingHumanReview !== false &&
           externalDataQueryText
         ) {
           setPendingSubmission({
@@ -1535,6 +1545,7 @@ export function ChatWindow(props: {
             displayMessages,
             clearInputOnConfirm: options?.clearInputOnConfirm ?? false,
             externalDataQueryText,
+            workflowThreadId,
           });
           setExternalDataQueryDraft(externalDataQueryText);
           setIsExternalDataConfirmOpen(true);
