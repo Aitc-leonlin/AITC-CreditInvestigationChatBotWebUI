@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { ArrowRight, Bot, FileText, ShieldCheck } from "lucide-react";
+import { ArrowRight, Bot, ClipboardCheck, FileText, ShieldCheck } from "lucide-react";
 
 import MembershipSessionGuard from "@/components/membership/MembershipSessionGuard";
 import { MODULE_PERMISSIONS } from "@/data/modulePermissions";
@@ -23,6 +23,14 @@ const MODULE_PERMISSION_GROUPS = {
   reportGenerator: [
     MODULE_PERMISSIONS.reportGeneratorCreate,
     MODULE_PERMISSIONS.reportGeneratorHistory,
+  ],
+  reportApproval: [
+    MODULE_PERMISSIONS.reportApprovalView,
+    MODULE_PERMISSIONS.reportApprovalSubmit,
+    MODULE_PERMISSIONS.reportApprovalReview,
+    MODULE_PERMISSIONS.reportApprovalViewAll,
+    MODULE_PERMISSIONS.reportApprovalWorkflowManage,
+    MODULE_PERMISSIONS.reportApprovalReassign,
   ],
   membership: [
     MODULE_PERMISSIONS.membershipRead,
@@ -66,6 +74,14 @@ const entryCards = [
     accentClassName: "bg-indigo-600 text-white",
     permissions: MODULE_PERMISSION_GROUPS.membership,
   },
+  {
+    title: "報告審核中心",
+    description: "依單位、職階與群組設定正式送審路線，處理報告通過、拒絕及歷程追蹤。",
+    href: "/report-approval",
+    icon: ClipboardCheck,
+    accentClassName: "bg-violet-600 text-white",
+    permissions: MODULE_PERMISSION_GROUPS.reportApproval,
+  },
 ];
 
 export default function Home() {
@@ -93,7 +109,7 @@ function HomeContent() {
               徵審授信AI平台
             </h1>
             <p className="mt-3 text-sm leading-6 text-[#4c7187] md:text-base">
-              點選進入授信AI助理進行授信風險問答，或使用徵審報告產生器建立分析報告草稿。
+              從授信問答、報告產製到正式送審，依帳號權限進入所需作業。
             </p>
           </section>
 

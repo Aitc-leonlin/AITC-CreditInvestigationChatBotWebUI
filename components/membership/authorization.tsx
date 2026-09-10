@@ -43,6 +43,21 @@ export function MembershipRouteGuard({
   return <>{children}</>;
 }
 
+export function MembershipAnyPermissionRouteGuard({
+  permissions,
+  children,
+}: {
+  permissions: readonly string[];
+  children: ReactNode;
+}) {
+  const { hasPermission, isLoading } = useMembershipPermissions();
+  if (isLoading) return null;
+  if (!permissions.some((permission) => hasPermission(permission))) {
+    return <MembershipAccessDenied />;
+  }
+  return <>{children}</>;
+}
+
 export function ButtonPermission({
   permission,
   children,

@@ -24,6 +24,7 @@ export const BACKEND_API_PATHS = {
   chatStructuredOutput: "/api/chat/structured-output",
   reportGeneratorGenerate: "/api/report-generator/generate",
   reportGeneratorHistory: "/api/report-generator/history",
+  reportApproval: "/api/report-approval",
   retrievalIngest: "/api/retrieval/ingest",
   expertKnowledge: "/api/expert-knowledge",
   expertKnowledgeApplied: "/api/expert-knowledge/applied",

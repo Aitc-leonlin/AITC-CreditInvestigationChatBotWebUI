@@ -55,6 +55,7 @@
     "@types/node": "20.12.12",
     "@types/react": "18.3.2",
     "@types/react-dom": "18.3.0",
+    "@xyflow/react": "^12.11.6",
     "ai": "^3.1.12",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

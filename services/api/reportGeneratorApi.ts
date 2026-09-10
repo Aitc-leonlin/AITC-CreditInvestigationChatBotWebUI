@@ -69,6 +69,8 @@ async function readDocumentResponse(
       getFilenameFromContentDisposition(response.headers.get("content-disposition")) ||
       fallbackFilename,
     dashboardPath: response.headers.get("x-report-dashboard-path") ?? "",
+    reportId: response.headers.get("x-report-history-id") ?? "",
+    publicId: response.headers.get("x-report-public-id") ?? "",
   };
 }
 

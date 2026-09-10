@@ -26,4 +26,10 @@ export const MODULE_PERMISSIONS = {
   creditAiWarehouseDataDelete: "credit-ai.warehouse-data.delete",
   reportGeneratorCreate: "report-generator.create",
   reportGeneratorHistory: "report-generator.history",
+  reportApprovalView: "report-approval.view",
+  reportApprovalSubmit: "report-approval.submit",
+  reportApprovalReview: "report-approval.review",
+  reportApprovalViewAll: "report-approval.view-all",
+  reportApprovalWorkflowManage: "report-approval.workflow.manage",
+  reportApprovalReassign: "report-approval.reassign",
 } as const;

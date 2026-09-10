@@ -61,11 +61,12 @@ export type GenerateReportPayload = {
   companyCode: string;
   companyLabel: string;
   year: string;
-  generatedBy: string;
 };
 
 export type ReportDocumentResult = {
   blob: Blob;
   filename: string;
   dashboardPath: string;
+  reportId: string;
+  publicId: string;
 };

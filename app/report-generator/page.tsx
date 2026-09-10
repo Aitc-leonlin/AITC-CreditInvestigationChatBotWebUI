@@ -2,12 +2,14 @@
 
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   AlertCircle,
   AlertTriangle,
   BarChart3,
   Calendar,
   Check,
+  ClipboardCheck,
   ChevronDown,
   CircleCheck,
   Clock,
@@ -35,7 +37,7 @@ import {
   YAxis,
 } from "recharts";
 import { COMPANY_OPTIONS, getCompanyByLabel } from "@/data/companyKnowledge";
-import { MembershipRouteGuard } from "@/components/membership/authorization";
+import { ButtonPermission, MembershipRouteGuard } from "@/components/membership/authorization";
 import MembershipSessionGuard from "@/components/membership/MembershipSessionGuard";
 import { MODULE_PERMISSIONS } from "@/data/modulePermissions";
 import {
@@ -319,6 +321,7 @@ function ReportGeneratorContent() {
   const [reportDashboard, setReportDashboard] = useState<ReportDashboard>(initialDashboard);
   const [reportStatus, setReportStatus] = useState<ReportStatus>("idle");
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [generatedReportId, setGeneratedReportId] = useState("");
   const progressTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const selectedCompany = getCompanyByLabel(companyCode);
@@ -403,6 +406,7 @@ function ReportGeneratorContent() {
     setIsGeneratingReport(true);
     setReportStatus("generating");
     setGenerationMessage("");
+    setGeneratedReportId("");
     setReportGeneratedAt(formatReportGeneratedAt(new Date()));
     startProgressTimer(year);
 
@@ -411,7 +415,6 @@ function ReportGeneratorContent() {
         companyCode: selectedCompanyCode,
         companyLabel: companyCode,
         year,
-        generatedBy: reportGeneratedBy === "-" ? "" : reportGeneratedBy,
       });
 
       const downloadUrl = URL.createObjectURL(documentResult.blob);
@@ -427,6 +430,7 @@ function ReportGeneratorContent() {
         setReportDashboard(getFallbackCompletedDashboard(year));
       }
       setReportStatus("completed");
+      setGeneratedReportId(documentResult.reportId);
       setGenerationMessage("徵審報告已成功產生並開始下載");
     } catch (error) {
       stopProgressTimer();
@@ -508,6 +512,17 @@ function ReportGeneratorContent() {
               <div className="rounded-md border border-[#A9C8C3] bg-[#EFF7F5] px-3 py-2 text-center text-xs font-medium text-[#28665F]">
                 {generationMessage}
               </div>
+            ) : null}
+            {generatedReportId ? (
+              <ButtonPermission permission={MODULE_PERMISSIONS.reportApprovalSubmit}>
+                <Link
+                  href="/report-approval"
+                  className="flex h-11 w-full items-center justify-center gap-2 rounded-md border border-violet-200 bg-violet-50 text-sm font-semibold text-violet-700 transition-colors hover:bg-violet-100"
+                >
+                  <ClipboardCheck className="h-4 w-4" />
+                  前往報告審核中心送審
+                </Link>
+              </ButtonPermission>
             ) : null}
             <div className="flex items-center justify-center gap-2 text-xs text-[#64748B]">
               <Sparkles className="h-4 w-4" />

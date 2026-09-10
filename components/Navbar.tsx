@@ -12,6 +12,7 @@ import FunctionsIcon from "@mui/icons-material/Functions";
 import {
   Bot,
   ChevronDown,
+  ClipboardCheck,
   Database,
   FileText,
   LogOut,
@@ -41,6 +42,7 @@ import {
 } from "./ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { toast } from "sonner";
+import { useMembershipPermissions } from "@/hooks/useMembershipPermissions";
 
 export const ActiveLink = (props: {
   href: string;
@@ -86,6 +88,17 @@ const navButtonClassName =
   "rounded-full border border-[#cfe4f2] bg-white px-4 py-2 text-sm font-medium text-[#12344a] transition-colors duration-200 flex items-center gap-2 whitespace-nowrap hover:border-[#57A6D4] hover:bg-[#eef7fc] hover:text-[#0f3f5d]";
 
 function getTopBarTitleConfig(pathname: string) {
+  if (pathname.startsWith("/report-approval")) {
+    return {
+      title: "報告審核中心",
+      icon: <ClipboardCheck className="h-5 w-5" />,
+      className:
+        "border-violet-200 bg-violet-50/80 text-violet-950 shadow-[0_8px_24px_rgba(124,58,237,0.10)]",
+      accentClassName: "bg-violet-600",
+      labelClassName: "text-violet-700",
+    };
+  }
+
   if (pathname.startsWith("/report-generator")) {
     return {
       title: "徵審報告產生器",
@@ -322,6 +335,32 @@ function MembershipDynamicNav() {
   );
 }
 
+function ReportApprovalNav() {
+  const { hasPermission, isLoading } = useMembershipPermissions();
+  if (isLoading) return null;
+  return (
+    <>
+      <ActiveLink
+        href="/report-approval"
+        icon={<ClipboardCheck className="h-[18px] w-[18px]" />}
+        activeClassName="cursor-default border-violet-600 bg-violet-600 text-white"
+        exact
+      >
+        審核中心
+      </ActiveLink>
+      {hasPermission("report-approval.workflow.manage") ? (
+        <ActiveLink
+          href="/report-approval/workflows"
+          icon={<Shield className="h-[18px] w-[18px]" />}
+          activeClassName="cursor-default border-violet-600 bg-violet-600 text-white"
+        >
+          流程設定
+        </ActiveLink>
+      ) : null}
+    </>
+  );
+}
+
 function LogoutButton() {
   const router = useRouter();
   const pathname = usePathname();
@@ -405,6 +444,7 @@ function getUserInitials(name: string) {
 export function Navbar() {
   const pathname = usePathname();
   const isReportGeneratorSection = pathname.startsWith("/report-generator");
+  const isReportApprovalSection = pathname.startsWith("/report-approval");
   const isMembershipSection = pathname.startsWith("/membership");
   const isChatbotSection =
     pathname.startsWith("/chatbot") ||
@@ -416,7 +456,7 @@ export function Navbar() {
     pathname.startsWith("/reset-password") ||
     pathname.startsWith("/verify-email");
   const hasSectionNav =
-    isChatbotSection || isReportGeneratorSection || isMembershipSection;
+    isChatbotSection || isReportGeneratorSection || isReportApprovalSection || isMembershipSection;
 
   if (isAuthSection) return null;
 
@@ -473,6 +513,7 @@ export function Navbar() {
               </ActiveLink>
             </>
           ) : null}
+          {isReportApprovalSection ? <ReportApprovalNav /> : null}
           {isMembershipSection ? (
             <MembershipDynamicNav />
           ) : null}
