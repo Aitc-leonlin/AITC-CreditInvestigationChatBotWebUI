@@ -1,7 +1,7 @@
 "use client";
 
 import type { Message } from "ai";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 import {
@@ -12,6 +12,7 @@ import {
   Copy,
   Database,
   Globe2,
+  Loader2,
   MessageSquarePlus,
   Paperclip,
   Settings,
@@ -58,6 +59,11 @@ import {
   fetchChatConversations,
   saveChatConversation,
 } from "@/services/api/chatConversationApi";
+import {
+  deleteChatDocument,
+  uploadChatDocument,
+} from "@/services/api/chatDocumentApi";
+import type { ChatDocument, StagedChatDocument } from "@/types/chatDocument";
 import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
 
 const HISTORY_PANEL_STORAGE_KEY = "aitc-chatbot-history-panel-open-v1";
@@ -82,6 +88,7 @@ type PendingSubmission = {
   clearInputOnConfirm: boolean;
   externalDataQueryText: string;
   workflowThreadId: string;
+  documentsForMessages: Record<string, ChatDocument[]>;
 };
 
 function getPeriodPromptValue(settings: ChatSettings) {
@@ -285,6 +292,7 @@ function createEmptyReferenceMaps() {
     dataSourcesForMessages: {} as Record<string, any[]>,
     expertKnowledgeForMessages: {} as Record<string, UsedExpertKnowledge[]>,
     externalDataForMessages: {} as Record<string, ExternalReferenceData[]>,
+    documentsForMessages: {} as Record<string, ChatDocument[]>,
   };
 }
 
@@ -293,6 +301,7 @@ function getSessionReferenceMaps(session: ChatSession | null | undefined) {
     dataSourcesForMessages: session?.dataSourcesForMessages ?? {},
     expertKnowledgeForMessages: session?.expertKnowledgeForMessages ?? {},
     externalDataForMessages: session?.externalDataForMessages ?? {},
+    documentsForMessages: session?.documentsForMessages ?? {},
   };
 }
 
@@ -374,6 +383,7 @@ function ChatMessages(props: {
   dataSourcesForMessages: Record<string, any[]>;
   expertKnowledgeForMessages: Record<string, UsedExpertKnowledge[]>;
   externalDataForMessages: Record<string, ExternalReferenceData[]>;
+  documentsForMessages: Record<string, ChatDocument[]>;
   aiEmoji?: string;
   className?: string;
   onCopyMessage: (message: Message) => void;
@@ -423,6 +433,7 @@ function ChatMessages(props: {
               props.expertKnowledgeForMessages[message.id] ?? []
             }
             appliedExternalData={props.externalDataForMessages[message.id] ?? []}
+            documents={props.documentsForMessages[message.id] ?? []}
             onCopy={props.onCopyMessage}
           />
         );
@@ -437,12 +448,14 @@ export function ChatInput(props: {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   loading?: boolean;
+  disabled?: boolean;
   placeholder?: string;
   children?: ReactNode;
   className?: string;
   actions?: ReactNode;
 }) {
-  const disabled = props.loading ? false : props.value.trim().length === 0;
+  const disabled =
+    props.disabled || (props.loading ? false : props.value.trim().length === 0);
 
   return (
     <form
@@ -464,6 +477,7 @@ export function ChatInput(props: {
           value={props.value}
           placeholder={props.placeholder}
           onChange={props.onChange}
+          disabled={props.disabled}
           className="border-none outline-none bg-transparent p-4"
         />
 
@@ -479,7 +493,12 @@ export function ChatInput(props: {
               variant={props.loading ? "destructive" : "default"}
               disabled={disabled}
             >
-              {props.loading ? (
+              {props.disabled ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  上傳文件中
+                </>
+              ) : props.loading ? (
                 <>
                   <Square className="h-4 w-4 fill-current" />
                   停止生成
@@ -896,6 +915,11 @@ export function ChatWindow(props: {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isUploadingDocuments, setIsUploadingDocuments] = useState(false);
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [stagedDocumentsByChat, setStagedDocumentsByChat] = useState<
+    Record<string, StagedChatDocument[]>
+  >({});
   const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState(true);
   const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(true);
   const [settings, setSettings] = useState<ChatSettings>(createEmptySettings());
@@ -905,6 +929,7 @@ export function ChatWindow(props: {
   const [isExternalDataConfirmOpen, setIsExternalDataConfirmOpen] = useState(false);
   const [externalDataQueryDraft, setExternalDataQueryDraft] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
+  const documentUploadInProgressRef = useRef(false);
   const externalDataConfirmTimerRef = useRef<number | null>(null);
   const conversationSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 
@@ -1044,6 +1069,9 @@ export function ChatWindow(props: {
   );
 
   const activeMessages = activeSession?.messages ?? [];
+  const activeStagedDocuments = activeSessionId
+    ? stagedDocumentsByChat[activeSessionId] ?? []
+    : [];
   const selectedConditionSummary = getSelectedConditionSummary(settings);
   const selectedCompany = getCompanyByLabel(settings.company);
   const openSidePanelsCount = Number(isHistoryPanelOpen) + Number(isSettingsPanelOpen);
@@ -1063,6 +1091,103 @@ export function ChatWindow(props: {
           error instanceof Error ? error.message : "儲存對話歷史失敗",
         );
       });
+  }
+
+  const ensureActiveConversationExists = useCallback(async () => {
+    if (!activeSessionId || !activeSession) {
+      throw new Error("目前沒有可使用的對話");
+    }
+    if (sessionsRef.current.some((session) => session.id === activeSessionId)) return;
+
+    const savedSession = await saveChatConversation(activeSession);
+    const nextSessions = [
+      savedSession,
+      ...sessionsRef.current.filter((session) => session.id !== activeSessionId),
+    ];
+    sessionsRef.current = nextSessions;
+    setSessions(nextSessions);
+    setDraftSession(null);
+  }, [activeSession, activeSessionId]);
+
+  function confirmStagedDocuments(documents: StagedChatDocument[]) {
+    if (!activeSessionId) return;
+    setStagedDocumentsByChat((current) => {
+      const next = { ...current };
+      if (documents.length) {
+        next[activeSessionId] = documents;
+      } else {
+        delete next[activeSessionId];
+      }
+      return next;
+    });
+    setIsUploadDialogOpen(false);
+    if (documents.length) {
+      toast.success(`已加入 ${documents.length} 份待上傳文件`, {
+        description: "送出 Chat 對話時才會實際上傳至後端。",
+      });
+    }
+  }
+
+  async function uploadStagedDocuments(
+    chatId: string,
+  ): Promise<ChatDocument[] | null> {
+    const stagedDocuments = stagedDocumentsByChat[chatId] ?? [];
+    if (!stagedDocuments.length) return [];
+    if (documentUploadInProgressRef.current) return null;
+
+    documentUploadInProgressRef.current = true;
+    setIsUploadingDocuments(true);
+    try {
+      await ensureActiveConversationExists();
+      const results = await Promise.allSettled(
+        stagedDocuments.map((document) =>
+          uploadChatDocument(chatId, document.file),
+        ),
+      );
+      const failedDocuments = stagedDocuments.filter(
+        (_, index) => results[index].status === "rejected",
+      );
+      const uploadedDocuments = results.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
+      );
+
+      if (failedDocuments.length) {
+        await Promise.allSettled(
+          uploadedDocuments.map((document) =>
+            deleteChatDocument(document.documentId),
+          ),
+        );
+        const firstFailure = results.find(
+          (result): result is PromiseRejectedResult => result.status === "rejected",
+        );
+        toast.error(
+          `${failedDocuments.length} 份文件上傳失敗，本次對話尚未送出`,
+          {
+            description:
+              firstFailure?.reason instanceof Error
+                ? firstFailure.reason.message
+                : "請確認檔案後再次送出。",
+          },
+        );
+        return null;
+      }
+
+      setStagedDocumentsByChat((current) => {
+        const next = { ...current };
+        delete next[chatId];
+        return next;
+      });
+      toast.success(`${stagedDocuments.length} 份文件已上傳`);
+      return uploadedDocuments;
+    } catch (error) {
+      toast.error("文件上傳失敗，本次對話尚未送出", {
+        description: error instanceof Error ? error.message : "請稍後再試。",
+      });
+      return null;
+    } finally {
+      documentUploadInProgressRef.current = false;
+      setIsUploadingDocuments(false);
+    }
   }
 
   function replaceActiveSession(
@@ -1176,6 +1301,7 @@ export function ChatWindow(props: {
         pendingExternalDataQueryText || pendingSubmission.externalDataQueryText,
       externalDataDecision: "adopted",
       workflowThreadId: pendingSubmission.workflowThreadId,
+      documentsForMessages: pendingSubmission.documentsForMessages,
     });
   }
 
@@ -1200,6 +1326,7 @@ export function ChatWindow(props: {
         pendingExternalDataQueryText || pendingSubmission.externalDataQueryText,
       externalDataDecision: "rejected",
       workflowThreadId: pendingSubmission.workflowThreadId,
+      documentsForMessages: pendingSubmission.documentsForMessages,
     });
   }
 
@@ -1207,18 +1334,36 @@ export function ChatWindow(props: {
     question: string,
     options?: { clearInputOnConfirm?: boolean },
   ) {
-    if (isLoading || intermediateStepsLoading || !activeSessionId) return;
+    if (
+      isLoading ||
+      documentUploadInProgressRef.current ||
+      isUploadingDocuments ||
+      intermediateStepsLoading ||
+      !activeSessionId
+    ) {
+      return;
+    }
 
     const trimmedQuestion = question.trim();
     if (!trimmedQuestion) return;
     const outboundQuestion = formatQuestionWithContext(trimmedQuestion, settings);
     if (!outboundQuestion) return;
 
+    const userMessageId = createId();
+    const uploadedDocuments = await uploadStagedDocuments(activeSessionId);
+    if (uploadedDocuments === null) return;
+
     const nextMessages = activeMessages.concat({
-      id: createId(),
+      id: userMessageId,
       content: outboundQuestion,
       role: "user",
     });
+    const documentsForMessages = {
+      ...(activeSession?.documentsForMessages ?? {}),
+      ...(uploadedDocuments.length
+        ? { [userMessageId]: uploadedDocuments }
+        : {}),
+    };
 
     if (options?.clearInputOnConfirm) {
       setInput("");
@@ -1226,6 +1371,7 @@ export function ChatWindow(props: {
 
     await streamAssistantReply(nextMessages, {
       clearInputOnConfirm: options?.clearInputOnConfirm ?? false,
+      documentsForMessages,
     });
   }
 
@@ -1238,6 +1384,7 @@ export function ChatWindow(props: {
       externalDataDecision?: "adopted" | "rejected";
       workflowThreadId?: string;
       clearInputOnConfirm?: boolean;
+      documentsForMessages?: Record<string, ChatDocument[]>;
     },
   ) {
     if (!activeSessionId) return;
@@ -1251,7 +1398,12 @@ export function ChatWindow(props: {
         content: "",
       });
 
-    const emptyReferenceMaps = createEmptyReferenceMaps();
+    const documentsForMessages =
+      options?.documentsForMessages ?? activeSession?.documentsForMessages ?? {};
+    const emptyReferenceMaps = {
+      ...createEmptyReferenceMaps(),
+      documentsForMessages,
+    };
     // Save the submitted user message immediately, then keep the temporary
     // assistant placeholder only in React state while the response streams.
     replaceActiveSession(requestMessages, emptyReferenceMaps, true);
@@ -1425,7 +1577,10 @@ export function ChatWindow(props: {
       const dataSourcesHeader =
         response.headers.get("x-data-sources") ??
         response.headers.get("x-sources");
-      let responseReferenceMaps = createEmptyReferenceMaps();
+      let responseReferenceMaps = {
+        ...createEmptyReferenceMaps(),
+        documentsForMessages,
+      };
       if (dataSourcesHeader) {
         const parsedDataSources = parseBase64JsonHeader<any[]>(dataSourcesHeader);
         responseReferenceMaps = {
@@ -1526,6 +1681,7 @@ export function ChatWindow(props: {
           dataSourcesForMessages: nextDataSourcesForMessages,
           expertKnowledgeForMessages: nextExpertKnowledgeForMessages,
           externalDataForMessages: nextExternalDataForMessages,
+          documentsForMessages,
         };
 
         if (!dataSourcesHeader && dataSources.length > 0) {
@@ -1546,6 +1702,7 @@ export function ChatWindow(props: {
             clearInputOnConfirm: options?.clearInputOnConfirm ?? false,
             externalDataQueryText,
             workflowThreadId,
+            documentsForMessages,
           });
           setExternalDataQueryDraft(externalDataQueryText);
           setIsExternalDataConfirmOpen(true);
@@ -1791,6 +1948,9 @@ export function ChatWindow(props: {
                 dataSourcesForMessages={dataSourcesForMessages}
                 expertKnowledgeForMessages={expertKnowledgeForMessages}
                 externalDataForMessages={externalDataForMessages}
+                documentsForMessages={
+                  activeSession?.documentsForMessages ?? {}
+                }
                 className={contentMaxWidthClass}
                 onCopyMessage={handleCopyMessage}
                 onSelectPresetQuestion={sendPresetQuestion}
@@ -1803,6 +1963,7 @@ export function ChatWindow(props: {
                 onSubmit={sendMessage}
                 onStop={stopGenerating}
                 loading={isLoading || intermediateStepsLoading}
+                disabled={isUploadingDocuments}
                 placeholder={props.placeholder}
                 className={contentMaxWidthClass}
               >
@@ -1827,22 +1988,35 @@ export function ChatWindow(props: {
                   />
                 )}
 
-                {props.showIngestForm && (
-                  <Dialog>
+                {props.showIngestForm && activeSessionId && (
+                  <Dialog
+                    open={isUploadDialogOpen}
+                    onOpenChange={setIsUploadDialogOpen}
+                  >
                     <DialogTrigger asChild>
-                      <Button variant="outline">
+                      <Button variant="outline" disabled={isUploadingDocuments}>
                         <Paperclip className="h-4 w-4" />
-                        <span>Upload Documents</span>
+                        <span>
+                          上傳文件
+                          {activeStagedDocuments.length
+                            ? ` (${activeStagedDocuments.length})`
+                            : ""}
+                        </span>
                       </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className="min-w-0 overflow-hidden sm:max-w-lg">
                       <DialogHeader>
-                        <DialogTitle>Upload Documents</DialogTitle>
+                        <DialogTitle>上傳對話文件</DialogTitle>
                         <DialogDescription>
-                          Upload files to use them as context in your chats.
+                          選擇文件並按下確定後會先保留在瀏覽器；送出 Chat
+                          對話時才會實際上傳至後端。
                         </DialogDescription>
                       </DialogHeader>
-                      <UploadDocumentsForm />
+                      <UploadDocumentsForm
+                        stagedDocuments={activeStagedDocuments}
+                        onCancel={() => setIsUploadDialogOpen(false)}
+                        onConfirm={confirmStagedDocuments}
+                      />
                     </DialogContent>
                   </Dialog>
                 )}

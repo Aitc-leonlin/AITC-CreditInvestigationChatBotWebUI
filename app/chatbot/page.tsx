@@ -48,6 +48,7 @@ export default function ChatbotPage() {
           endpoint={BACKEND_API_PATHS.chat}
           emoji="AI"
           placeholder="請輸入授信調查問題"
+          showIngestForm
           emptyStateComponent={InfoCard}
           presetQuestions={[
             "現金水位是否充足？",

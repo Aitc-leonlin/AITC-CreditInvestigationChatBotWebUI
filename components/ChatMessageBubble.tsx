@@ -1,8 +1,10 @@
 import { cn } from "@/utils/cn";
 import type { Message } from "ai/react";
 import { useState } from "react";
+import { Tooltip } from "@mui/material";
+import type { ChatDocument } from "@/types/chatDocument";
 import { Button } from "./ui/button";
-import { ChevronDown, Copy } from "lucide-react";
+import { ChevronDown, Copy, FileText } from "lucide-react";
 
 export type UsedExpertKnowledge = {
   title?: string;
@@ -121,12 +123,34 @@ function SourceMeta(props: { label: string; value: unknown }) {
   );
 }
 
+function DocumentBubble({ document }: { document: ChatDocument }) {
+  return (
+    <div className="flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-[24px] border border-slate-200 bg-white px-5 py-4 shadow-sm">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 border-blue-500 text-blue-600">
+        <FileText className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1 overflow-hidden text-left">
+        <Tooltip title={document.fileName} arrow placement="top">
+          <div
+            tabIndex={0}
+            className="block w-full truncate text-base font-semibold text-slate-900 outline-none"
+          >
+            {document.fileName}
+          </div>
+        </Tooltip>
+        <div className="mt-0.5 text-sm text-slate-500">Document</div>
+      </div>
+    </div>
+  );
+}
+
 export function ChatMessageBubble(props: {
   message: Message;
   aiEmoji?: string;
   dataSources: any[];
   appliedExpertKnowledge?: UsedExpertKnowledge[];
   appliedExternalData?: ExternalReferenceData[];
+  documents?: ChatDocument[];
   onCopy?: (message: Message) => void;
 }) {
   const isThinking =
@@ -148,6 +172,8 @@ export function ChatMessageBubble(props: {
     props.message.role === "user"
       ? parseContextualUserMessage(props.message.content)
       : null;
+  const documents =
+    props.message.role === "user" ? props.documents ?? [] : [];
 
   return (
     <div
@@ -156,6 +182,14 @@ export function ChatMessageBubble(props: {
         props.message.role === "user" ? "ml-auto items-end" : "mr-auto items-start",
       )}
     >
+      {documents.length ? (
+        <div className="mb-3 flex w-[min(36rem,75vw)] max-w-full min-w-0 flex-col gap-2">
+          {documents.map((document) => (
+            <DocumentBubble key={document.documentId} document={document} />
+          ))}
+        </div>
+      ) : null}
+
       <div
         className={cn(
           "flex rounded-[24px]",

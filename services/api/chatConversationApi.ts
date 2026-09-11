@@ -4,6 +4,7 @@ import type {
   ExternalReferenceData,
   UsedExpertKnowledge,
 } from "@/components/ChatMessageBubble";
+import type { ChatDocument } from "@/types/chatDocument";
 import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
 
 export type ChatConversation = {
@@ -15,6 +16,7 @@ export type ChatConversation = {
   dataSourcesForMessages: Record<string, any[]>;
   expertKnowledgeForMessages: Record<string, UsedExpertKnowledge[]>;
   externalDataForMessages: Record<string, ExternalReferenceData[]>;
+  documentsForMessages: Record<string, ChatDocument[]>;
 };
 
 type ApiResponse<T> = {
@@ -52,6 +54,14 @@ export async function saveChatConversation(conversation: ChatConversation) {
       dataSourcesForMessages: conversation.dataSourcesForMessages,
       expertKnowledgeForMessages: conversation.expertKnowledgeForMessages,
       externalDataForMessages: conversation.externalDataForMessages,
+      documentsForMessages: Object.fromEntries(
+        Object.entries(conversation.documentsForMessages).map(
+          ([messageId, documents]) => [
+            messageId,
+            documents.map(({ documentId }) => ({ documentId })),
+          ],
+        ),
+      ),
     }),
   });
   return parseApiResponse<ChatConversation>(response);
