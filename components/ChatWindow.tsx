@@ -31,7 +31,12 @@ import type {
   ExternalReferenceData,
   UsedExpertKnowledge,
 } from "@/components/ChatMessageBubble";
-import { CHAT_SETTINGS_STORAGE_KEY } from "@/data/chatSettings";
+import {
+  CHAT_SETTINGS_BY_THREAD_STORAGE_KEY,
+  CHAT_SETTINGS_STORAGE_KEY,
+  type StoredChatSettings,
+  type StoredChatSettingsByThread,
+} from "@/data/chatSettings";
 import { IntermediateStep } from "./IntermediateStep";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
@@ -63,11 +68,17 @@ import {
   deleteChatDocument,
   uploadChatDocument,
 } from "@/services/api/chatDocumentApi";
-import type { ChatDocument, StagedChatDocument } from "@/types/chatDocument";
+import type {
+  ChatDocument,
+  ChatDocumentUpload,
+  StagedChatDocument,
+} from "@/types/chatDocument";
 import { BACKEND_API_PATHS, fetchBackendApi } from "@/utils/api";
 
 const HISTORY_PANEL_STORAGE_KEY = "aitc-chatbot-history-panel-open-v1";
 const SETTINGS_PANEL_STORAGE_KEY = "aitc-chatbot-settings-panel-open-v2";
+const FAKE_UPLOAD_PROGRESS_INTERVAL_MS = 250;
+const FAKE_UPLOAD_PROGRESS_STEP = 3;
 
 type ChatSettings = {
   company: string;
@@ -89,6 +100,12 @@ type PendingSubmission = {
   externalDataQueryText: string;
   workflowThreadId: string;
   documentsForMessages: Record<string, ChatDocument[]>;
+};
+
+type PendingDocumentUpload = {
+  chatId: string;
+  message: Message;
+  documents: ChatDocumentUpload[];
 };
 
 function getPeriodPromptValue(settings: ChatSettings) {
@@ -205,9 +222,9 @@ function createEmptySettings(): ChatSettings {
     periodYear: "",
     periodQuarter: "",
     statementType: "",
-    useExpertKnowledge: true,
-    useWarehouseData: true,
-    useExternalData: true,
+    useExpertKnowledge: false,
+    useWarehouseData: false,
+    useExternalData: false,
   };
 }
 
@@ -216,6 +233,102 @@ function toStoredBoolean(value: unknown, fallback: boolean) {
   if (value === "true") return true;
   if (value === "false") return false;
   return fallback;
+}
+
+function normalizeStoredChatSettings(value: unknown): ChatSettings {
+  const emptySettings = createEmptySettings();
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return emptySettings;
+  }
+
+  const storedSettings = value as StoredChatSettings & {
+    useNegativeNews?: boolean;
+  };
+  return {
+    company:
+      typeof storedSettings.company === "string"
+        ? storedSettings.company
+        : emptySettings.company,
+    period:
+      typeof storedSettings.period === "string"
+        ? storedSettings.period
+        : emptySettings.period,
+    periodYear:
+      typeof storedSettings.periodYear === "string"
+        ? storedSettings.periodYear
+        : emptySettings.periodYear,
+    periodQuarter:
+      typeof storedSettings.periodQuarter === "string"
+        ? storedSettings.periodQuarter
+        : emptySettings.periodQuarter,
+    statementType:
+      typeof storedSettings.statementType === "string"
+        ? storedSettings.statementType
+        : emptySettings.statementType,
+    useExpertKnowledge: toStoredBoolean(
+      storedSettings.useExpertKnowledge,
+      emptySettings.useExpertKnowledge,
+    ),
+    useWarehouseData:
+      typeof storedSettings.useWarehouseData === "undefined"
+        ? toStoredBoolean(
+            storedSettings.useNegativeNews,
+            emptySettings.useWarehouseData,
+          )
+        : toStoredBoolean(
+            storedSettings.useWarehouseData,
+            emptySettings.useWarehouseData,
+          ),
+    useExternalData: toStoredBoolean(
+      storedSettings.useExternalData,
+      emptySettings.useExternalData,
+    ),
+  };
+}
+
+function readStoredChatSettingsByThread(): StoredChatSettingsByThread {
+  try {
+    const storedValue = window.localStorage.getItem(
+      CHAT_SETTINGS_BY_THREAD_STORAGE_KEY,
+    );
+    if (!storedValue) return {};
+
+    const parsedValue = JSON.parse(storedValue);
+    return parsedValue && typeof parsedValue === "object" && !Array.isArray(parsedValue)
+      ? (parsedValue as StoredChatSettingsByThread)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function loadChatSettingsForThread(threadId: string): ChatSettings {
+  if (!threadId) return createEmptySettings();
+  const storedSettings = readStoredChatSettingsByThread()[threadId];
+  return storedSettings
+    ? normalizeStoredChatSettings(storedSettings)
+    : createEmptySettings();
+}
+
+function saveChatSettingsForThread(threadId: string, settings: ChatSettings) {
+  if (!threadId) return;
+  try {
+    const settingsByThread = readStoredChatSettingsByThread();
+    window.localStorage.setItem(
+      CHAT_SETTINGS_BY_THREAD_STORAGE_KEY,
+      JSON.stringify({
+        ...settingsByThread,
+        [threadId]: settings,
+      }),
+    );
+    // Keep the active thread as a compatibility snapshot for non-chat pages.
+    window.localStorage.setItem(
+      CHAT_SETTINGS_STORAGE_KEY,
+      JSON.stringify(settings),
+    );
+  } catch {
+    // Keep the in-memory settings usable when browser storage is unavailable.
+  }
 }
 
 function createId() {
@@ -384,6 +497,7 @@ function ChatMessages(props: {
   expertKnowledgeForMessages: Record<string, UsedExpertKnowledge[]>;
   externalDataForMessages: Record<string, ExternalReferenceData[]>;
   documentsForMessages: Record<string, ChatDocument[]>;
+  pendingDocumentUpload?: PendingDocumentUpload | null;
   aiEmoji?: string;
   className?: string;
   onCopyMessage: (message: Message) => void;
@@ -391,7 +505,7 @@ function ChatMessages(props: {
 }) {
   return (
     <div className={cn("flex flex-col mx-auto pb-12 w-full", props.className)}>
-      {props.messages.length === 0 ? (
+      {props.messages.length === 0 && !props.pendingDocumentUpload ? (
         <div className="flex flex-col items-center gap-6">
           {props.emptyStateComponent}
 
@@ -438,6 +552,18 @@ function ChatMessages(props: {
           />
         );
       })}
+
+      {props.pendingDocumentUpload ? (
+        <ChatMessageBubble
+          key={`pending-upload-${props.pendingDocumentUpload.message.id}`}
+          message={props.pendingDocumentUpload.message}
+          aiEmoji={props.aiEmoji}
+          dataSources={[]}
+          appliedExpertKnowledge={[]}
+          appliedExternalData={[]}
+          documentUploads={props.pendingDocumentUpload.documents}
+        />
+      ) : null}
     </div>
   );
 }
@@ -916,6 +1042,8 @@ export function ChatWindow(props: {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isUploadingDocuments, setIsUploadingDocuments] = useState(false);
+  const [pendingDocumentUpload, setPendingDocumentUpload] =
+    useState<PendingDocumentUpload | null>(null);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
   const [stagedDocumentsByChat, setStagedDocumentsByChat] = useState<
     Record<string, StagedChatDocument[]>
@@ -930,6 +1058,7 @@ export function ChatWindow(props: {
   const [externalDataQueryDraft, setExternalDataQueryDraft] = useState("");
   const abortControllerRef = useRef<AbortController | null>(null);
   const documentUploadInProgressRef = useRef(false);
+  const documentUploadProgressTimerRef = useRef<number | null>(null);
   const externalDataConfirmTimerRef = useRef<number | null>(null);
   const conversationSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
 
@@ -946,6 +1075,7 @@ export function ChatWindow(props: {
           setSessions([]);
           setDraftSession(initialDraftSession);
           setActiveSessionId(initialDraftSession.id);
+          setSettings(loadChatSettingsForThread(initialDraftSession.id));
           return;
         }
 
@@ -956,6 +1086,7 @@ export function ChatWindow(props: {
         setSessions(sortedSessions);
         setDraftSession(null);
         setActiveSessionId(sortedSessions[0].id);
+        setSettings(loadChatSettingsForThread(sortedSessions[0].id));
         const restoredReferenceMaps = getSessionReferenceMaps(sortedSessions[0]);
         setDataSourcesForMessages(restoredReferenceMaps.dataSourcesForMessages);
         setExpertKnowledgeForMessages(
@@ -970,6 +1101,7 @@ export function ChatWindow(props: {
         setSessions([]);
         setDraftSession(initialDraftSession);
         setActiveSessionId(initialDraftSession.id);
+        setSettings(loadChatSettingsForThread(initialDraftSession.id));
         toast.error(
           error instanceof Error ? error.message : "讀取對話歷史失敗",
         );
@@ -1012,51 +1144,17 @@ export function ChatWindow(props: {
   }, [isSettingsPanelOpen]);
 
   useEffect(() => {
-    const storedSettings = window.localStorage.getItem(CHAT_SETTINGS_STORAGE_KEY);
-    if (!storedSettings) return;
-
-    try {
-      const parsedSettings = JSON.parse(storedSettings) as ChatSettings & {
-        useNegativeNews?: boolean;
-      };
-      setSettings((currentSettings) => ({
-        ...currentSettings,
-        ...parsedSettings,
-        useExpertKnowledge: toStoredBoolean(
-          parsedSettings.useExpertKnowledge,
-          currentSettings.useExpertKnowledge,
-        ),
-        useWarehouseData:
-          typeof parsedSettings.useWarehouseData === "undefined"
-            ? toStoredBoolean(
-                parsedSettings.useNegativeNews,
-                currentSettings.useWarehouseData,
-              )
-            : toStoredBoolean(
-                parsedSettings.useWarehouseData,
-                currentSettings.useWarehouseData,
-              ),
-        useExternalData: toStoredBoolean(
-          parsedSettings.useExternalData,
-          currentSettings.useExternalData,
-        ),
-      }));
-    } catch {
-      return;
-    }
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem(
-      CHAT_SETTINGS_STORAGE_KEY,
-      JSON.stringify(settings),
-    );
-  }, [settings]);
+    if (!activeSessionId) return;
+    saveChatSettingsForThread(activeSessionId, settings);
+  }, [activeSessionId, settings]);
 
   useEffect(() => {
     return () => {
       if (externalDataConfirmTimerRef.current !== null) {
         window.clearTimeout(externalDataConfirmTimerRef.current);
+      }
+      if (documentUploadProgressTimerRef.current !== null) {
+        window.clearInterval(documentUploadProgressTimerRef.current);
       }
     };
   }, []);
@@ -1137,39 +1235,70 @@ export function ChatWindow(props: {
 
     documentUploadInProgressRef.current = true;
     setIsUploadingDocuments(true);
+    const uploadedDocuments: ChatDocument[] = [];
+
+    const updateDocumentUpload = (
+      localId: string,
+      updates: Partial<ChatDocumentUpload>,
+    ) => {
+      setPendingDocumentUpload((current) =>
+        current && current.chatId === chatId
+          ? {
+              ...current,
+              documents: current.documents.map((document) =>
+                document.localId === localId
+                  ? { ...document, ...updates }
+                  : document,
+              ),
+            }
+          : current,
+      );
+    };
+
+    const stopFakeProgress = () => {
+      if (documentUploadProgressTimerRef.current !== null) {
+        window.clearInterval(documentUploadProgressTimerRef.current);
+        documentUploadProgressTimerRef.current = null;
+      }
+    };
+
+    const startFakeProgress = (localId: string) => {
+      stopFakeProgress();
+      let progress = 0;
+      updateDocumentUpload(localId, { progress, status: "uploading" });
+      documentUploadProgressTimerRef.current = window.setInterval(() => {
+        progress = Math.min(95, progress + FAKE_UPLOAD_PROGRESS_STEP);
+        updateDocumentUpload(localId, { progress });
+        if (progress === 95) stopFakeProgress();
+      }, FAKE_UPLOAD_PROGRESS_INTERVAL_MS);
+    };
+
     try {
       await ensureActiveConversationExists();
-      const results = await Promise.allSettled(
-        stagedDocuments.map((document) =>
-          uploadChatDocument(chatId, document.file),
-        ),
-      );
-      const failedDocuments = stagedDocuments.filter(
-        (_, index) => results[index].status === "rejected",
-      );
-      const uploadedDocuments = results.flatMap((result) =>
-        result.status === "fulfilled" ? [result.value] : [],
-      );
-
-      if (failedDocuments.length) {
-        await Promise.allSettled(
-          uploadedDocuments.map((document) =>
-            deleteChatDocument(document.documentId),
-          ),
-        );
-        const firstFailure = results.find(
-          (result): result is PromiseRejectedResult => result.status === "rejected",
-        );
-        toast.error(
-          `${failedDocuments.length} 份文件上傳失敗，本次對話尚未送出`,
-          {
+      for (const document of stagedDocuments) {
+        startFakeProgress(document.localId);
+        try {
+          const uploadedDocument = await uploadChatDocument(chatId, document.file);
+          stopFakeProgress();
+          uploadedDocuments.push(uploadedDocument);
+          updateDocumentUpload(document.localId, {
+            progress: 100,
+            status: "completed",
+          });
+        } catch (error) {
+          stopFakeProgress();
+          updateDocumentUpload(document.localId, { status: "failed" });
+          await Promise.allSettled(
+            uploadedDocuments.map((uploadedDocument) =>
+              deleteChatDocument(uploadedDocument.documentId),
+            ),
+          );
+          toast.error(`${document.file.name} 上傳失敗，本次對話尚未送出`, {
             description:
-              firstFailure?.reason instanceof Error
-                ? firstFailure.reason.message
-                : "請確認檔案後再次送出。",
-          },
-        );
-        return null;
+              error instanceof Error ? error.message : "請確認檔案後再次送出。",
+          });
+          return null;
+        }
       }
 
       setStagedDocumentsByChat((current) => {
@@ -1180,11 +1309,23 @@ export function ChatWindow(props: {
       toast.success(`${stagedDocuments.length} 份文件已上傳`);
       return uploadedDocuments;
     } catch (error) {
+      setPendingDocumentUpload((current) =>
+        current && current.chatId === chatId
+          ? {
+              ...current,
+              documents: current.documents.map((document) => ({
+                ...document,
+                status: "failed",
+              })),
+            }
+          : current,
+      );
       toast.error("文件上傳失敗，本次對話尚未送出", {
         description: error instanceof Error ? error.message : "請稍後再試。",
       });
       return null;
     } finally {
+      stopFakeProgress();
       documentUploadInProgressRef.current = false;
       setIsUploadingDocuments(false);
     }
@@ -1244,6 +1385,7 @@ export function ChatWindow(props: {
     const nextDraftSession = createEmptySession();
     setDraftSession(nextDraftSession);
     setActiveSessionId(nextDraftSession.id);
+    setSettings(loadChatSettingsForThread(nextDraftSession.id));
     setInput("");
     setDataSourcesForMessages({});
     setExpertKnowledgeForMessages({});
@@ -1256,6 +1398,7 @@ export function ChatWindow(props: {
       (draftSession?.id === sessionId ? draftSession : null);
     const restoredReferenceMaps = getSessionReferenceMaps(targetSession);
     setActiveSessionId(sessionId);
+    setSettings(loadChatSettingsForThread(sessionId));
     setInput("");
     setDataSourcesForMessages(restoredReferenceMaps.dataSourcesForMessages);
     setExpertKnowledgeForMessages(restoredReferenceMaps.expertKnowledgeForMessages);
@@ -1350,8 +1493,28 @@ export function ChatWindow(props: {
     if (!outboundQuestion) return;
 
     const userMessageId = createId();
+    const stagedDocuments = stagedDocumentsByChat[activeSessionId] ?? [];
+    if (stagedDocuments.length) {
+      setPendingDocumentUpload({
+        chatId: activeSessionId,
+        message: {
+          id: userMessageId,
+          content: outboundQuestion,
+          role: "user",
+        },
+        documents: stagedDocuments.map((document) => ({
+          localId: document.localId,
+          fileName: document.file.name,
+          fileType: document.file.name.split(".").pop()?.toLowerCase() ?? "",
+          fileSize: document.file.size,
+          progress: 0,
+          status: "queued",
+        })),
+      });
+    }
     const uploadedDocuments = await uploadStagedDocuments(activeSessionId);
     if (uploadedDocuments === null) return;
+    setPendingDocumentUpload(null);
 
     const nextMessages = activeMessages.concat({
       id: userMessageId,
@@ -1950,6 +2113,11 @@ export function ChatWindow(props: {
                 externalDataForMessages={externalDataForMessages}
                 documentsForMessages={
                   activeSession?.documentsForMessages ?? {}
+                }
+                pendingDocumentUpload={
+                  pendingDocumentUpload?.chatId === activeSessionId
+                    ? pendingDocumentUpload
+                    : null
                 }
                 className={contentMaxWidthClass}
                 onCopyMessage={handleCopyMessage}

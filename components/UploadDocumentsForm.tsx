@@ -216,7 +216,6 @@ export function UploadDocumentsForm({
                   {fileExtension(item.file.name)}
                 </span>
                 <span>{formatFileSize(item.file.size)}</span>
-                <span className="text-amber-700">等待對話送出</span>
               </div>
             </div>
             <Button

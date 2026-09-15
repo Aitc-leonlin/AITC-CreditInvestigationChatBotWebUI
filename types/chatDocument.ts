@@ -15,3 +15,12 @@ export type StagedChatDocument = {
   localId: string;
   file: File;
 };
+
+export type ChatDocumentUpload = {
+  localId: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  progress: number;
+  status: "queued" | "uploading" | "completed" | "failed";
+};

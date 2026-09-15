@@ -2,7 +2,7 @@ import { cn } from "@/utils/cn";
 import type { Message } from "ai/react";
 import { useState } from "react";
 import { Tooltip } from "@mui/material";
-import type { ChatDocument } from "@/types/chatDocument";
+import type { ChatDocument, ChatDocumentUpload } from "@/types/chatDocument";
 import { Button } from "./ui/button";
 import { ChevronDown, Copy, FileText } from "lucide-react";
 
@@ -123,22 +123,57 @@ function SourceMeta(props: { label: string; value: unknown }) {
   );
 }
 
-function DocumentBubble({ document }: { document: ChatDocument }) {
+function DocumentBubble(props: {
+  fileName: string;
+  fileType: string;
+  progress: number;
+  status: ChatDocumentUpload["status"];
+}) {
+  const statusLabel =
+    props.status === "queued"
+      ? "等待上傳"
+      : props.status === "failed"
+        ? "上傳失敗"
+        : props.status === "completed"
+          ? "已上傳"
+          : `上傳中… ${props.progress}%`;
+
   return (
-    <div className="flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-[24px] border border-slate-200 bg-white px-5 py-4 shadow-sm">
+    <div className="relative flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-[24px] border border-slate-200 bg-white px-5 pb-5 pt-4 shadow-sm">
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border-2 border-blue-500 text-blue-600">
         <FileText className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1 overflow-hidden text-left">
-        <Tooltip title={document.fileName} arrow placement="top">
+        <Tooltip title={props.fileName} arrow placement="top">
           <div
             tabIndex={0}
             className="block w-full truncate text-base font-semibold text-slate-900 outline-none"
           >
-            {document.fileName}
+            {props.fileName}
           </div>
         </Tooltip>
-        <div className="mt-0.5 text-sm text-slate-500">Document</div>
+        <div className="mt-0.5 text-sm text-slate-500">
+          {statusLabel}
+          {props.fileType ? ` · ${props.fileType.toUpperCase()}` : ""}
+        </div>
+      </div>
+      <div
+        className="absolute inset-x-0 bottom-0 h-2 bg-blue-100"
+        role="progressbar"
+        aria-label={`${props.fileName} 上傳進度`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={props.progress}
+      >
+        <div
+          className={cn(
+            "h-full bg-blue-500",
+            props.status === "uploading"
+              ? "transition-[width] duration-300 ease-linear"
+              : null,
+          )}
+          style={{ width: `${props.progress}%` }}
+        />
       </div>
     </div>
   );
@@ -151,6 +186,7 @@ export function ChatMessageBubble(props: {
   appliedExpertKnowledge?: UsedExpertKnowledge[];
   appliedExternalData?: ExternalReferenceData[];
   documents?: ChatDocument[];
+  documentUploads?: ChatDocumentUpload[];
   onCopy?: (message: Message) => void;
 }) {
   const isThinking =
@@ -174,6 +210,8 @@ export function ChatMessageBubble(props: {
       : null;
   const documents =
     props.message.role === "user" ? props.documents ?? [] : [];
+  const documentUploads =
+    props.message.role === "user" ? props.documentUploads ?? [] : [];
 
   return (
     <div
@@ -182,10 +220,25 @@ export function ChatMessageBubble(props: {
         props.message.role === "user" ? "ml-auto items-end" : "mr-auto items-start",
       )}
     >
-      {documents.length ? (
+      {documents.length || documentUploads.length ? (
         <div className="mb-3 flex w-[min(36rem,75vw)] max-w-full min-w-0 flex-col gap-2">
           {documents.map((document) => (
-            <DocumentBubble key={document.documentId} document={document} />
+            <DocumentBubble
+              key={document.documentId}
+              fileName={document.fileName}
+              fileType={document.fileType}
+              progress={100}
+              status="completed"
+            />
+          ))}
+          {documentUploads.map((document) => (
+            <DocumentBubble
+              key={document.localId}
+              fileName={document.fileName}
+              fileType={document.fileType}
+              progress={document.progress}
+              status={document.status}
+            />
           ))}
         </div>
       ) : null}

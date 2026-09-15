@@ -11,14 +11,7 @@ export default function ChatbotPage() {
   const InfoCard = (
     <GuideInfoBox>
       <div className="mb-4 flex justify-center">
-        <Image
-          src="/images/credit_report_icon.png"
-          alt="徵信報告圖示"
-          width={256}
-          height={256}
-          className="h-36 w-36 object-contain md:h-48 md:w-48"
-          priority
-        />
+       
       </div>
       <ul>
         <li className="hidden text-l md:block">
