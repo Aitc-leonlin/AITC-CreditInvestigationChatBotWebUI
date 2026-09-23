@@ -79,6 +79,7 @@ const HISTORY_PANEL_STORAGE_KEY = "aitc-chatbot-history-panel-open-v1";
 const SETTINGS_PANEL_STORAGE_KEY = "aitc-chatbot-settings-panel-open-v2";
 const FAKE_UPLOAD_PROGRESS_INTERVAL_MS = 250;
 const FAKE_UPLOAD_PROGRESS_STEP = 3;
+const CHAT_INPUT_MAX_HEIGHT_PX = 160;
 
 type ChatSettings = {
   company: string;
@@ -572,7 +573,7 @@ export function ChatInput(props: {
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
   onStop?: () => void;
   value: string;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   loading?: boolean;
   disabled?: boolean;
   placeholder?: string;
@@ -580,8 +581,20 @@ export function ChatInput(props: {
   className?: string;
   actions?: ReactNode;
 }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const disabled =
     props.disabled || (props.loading ? false : props.value.trim().length === 0);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    textarea.style.height = "auto";
+    const nextHeight = Math.min(textarea.scrollHeight, CHAT_INPUT_MAX_HEIGHT_PX);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > CHAT_INPUT_MAX_HEIGHT_PX ? "auto" : "hidden";
+  }, [props.value]);
 
   return (
     <form
@@ -598,13 +611,25 @@ export function ChatInput(props: {
       className={cn("mx-auto flex w-full flex-col", props.className)}
     >
       <div className="border border-input bg-secondary rounded-lg flex flex-col gap-2 w-full mx-auto">
-        <input
+        <Textarea
+          ref={textareaRef}
           id="chat-message-input"
+          rows={1}
           value={props.value}
           placeholder={props.placeholder}
           onChange={props.onChange}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing
+            ) {
+              event.preventDefault();
+              event.currentTarget.form?.requestSubmit();
+            }
+          }}
           disabled={props.disabled}
-          className="border-none outline-none bg-transparent p-4"
+          className="min-h-14 max-h-[160px] resize-none overflow-hidden border-none bg-transparent p-4 shadow-none focus-visible:ring-0"
         />
 
         <div className="flex justify-between ml-4 mr-2 mb-2">
@@ -1505,7 +1530,7 @@ export function ChatWindow(props: {
         documents: stagedDocuments.map((document) => ({
           localId: document.localId,
           fileName: document.file.name,
-          fileType: document.file.name.split(".").pop()?.toLowerCase() ?? "",
+          fileType: document.fileType,
           fileSize: document.file.size,
           progress: 0,
           status: "queued",

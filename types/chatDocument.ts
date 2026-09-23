@@ -14,6 +14,7 @@ export type ChatDocument = {
 export type StagedChatDocument = {
   localId: string;
   file: File;
+  fileType: string;
 };
 
 export type ChatDocumentUpload = {

@@ -22,8 +22,26 @@ const ACCEPTED_EXTENSIONS = new Set([
   "markdown",
   "csv",
   "xlsx",
+  "xbrl",
+  "xml",
+  "html",
+  "htm",
+  "xhtml",
 ]);
-const FILE_INPUT_ACCEPT = ".pdf,.docx,.txt,.md,.markdown,.csv,.xlsx";
+const FILE_INPUT_ACCEPT =
+  ".pdf,.docx,.txt,.md,.markdown,.csv,.xlsx,.xbrl,.xml,.html,.htm,.xhtml";
+const XBRL_CANDIDATE_EXTENSIONS = new Set(["xbrl", "xml"]);
+const HTML_EXTENSIONS = new Set(["html", "htm", "xhtml"]);
+const XBRL_INSTANCE_NAMESPACE = "http://www.xbrl.org/2003/instance";
+const INLINE_XBRL_NAMESPACES = new Set([
+  "http://www.xbrl.org/2008/inlineXBRL",
+  "http://www.xbrl.org/2013/inlineXBRL",
+]);
+const INLINE_XBRL_FACT_NAMES = new Set([
+  "nonfraction",
+  "nonnumeric",
+  "fraction",
+]);
 
 type RejectedFile = {
   id: string;
@@ -57,6 +75,53 @@ function sameFile(left: File, right: File) {
   );
 }
 
+function detectXbrlDocumentType(document: Document) {
+  const root = document.documentElement;
+  if (
+    root.namespaceURI === XBRL_INSTANCE_NAMESPACE &&
+    root.localName.toLowerCase() === "xbrl"
+  ) {
+    return "XBRL";
+  }
+  if (root.localName.toLowerCase() !== "html") return null;
+
+  let hasHeader = false;
+  let hasFact = false;
+  let hasContext = false;
+  for (const element of Array.from(document.getElementsByTagName("*"))) {
+    const namespace = element.namespaceURI ?? "";
+    const localName = element.localName.toLowerCase();
+    if (INLINE_XBRL_NAMESPACES.has(namespace)) {
+      hasHeader ||= localName === "header";
+      hasFact ||= INLINE_XBRL_FACT_NAMES.has(localName);
+    } else if (namespace === XBRL_INSTANCE_NAMESPACE) {
+      hasContext ||= localName === "context";
+    }
+    if (hasHeader && hasFact && hasContext) return "Inline XBRL";
+  }
+  return null;
+}
+
+async function detectedFileType(file: File, extension: string) {
+  if (
+    !XBRL_CANDIDATE_EXTENSIONS.has(extension) &&
+    !HTML_EXTENSIONS.has(extension)
+  ) {
+    return extension;
+  }
+
+  const document = new DOMParser().parseFromString(
+    await file.text(),
+    "application/xml",
+  );
+  if (document.getElementsByTagName("parsererror").length) {
+    return HTML_EXTENSIONS.has(extension) ? "html" : null;
+  }
+  const xbrlDocumentType = detectXbrlDocumentType(document);
+  if (xbrlDocumentType) return xbrlDocumentType;
+  return HTML_EXTENSIONS.has(extension) ? "html" : null;
+}
+
 function TruncatedFileName({ name }: { name: string }) {
   return (
     <Tooltip title={name} arrow placement="top">
@@ -84,51 +149,73 @@ export function UploadDocumentsForm({
     useState<StagedChatDocument[]>(stagedDocuments);
   const [rejectedFiles, setRejectedFiles] = useState<RejectedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
+  const [isInspectingFiles, setIsInspectingFiles] = useState(false);
+  const isInspectingFilesRef = useRef(false);
 
-  function selectFiles(files: File[]) {
-    if (!files.length) return;
+  async function selectFiles(files: File[]) {
+    if (!files.length || isInspectingFilesRef.current) return;
+
+    isInspectingFilesRef.current = true;
+    setIsInspectingFiles(true);
 
     const next = [...selectedDocuments];
     const nextRejectedFiles: RejectedFile[] = [];
-    for (const file of files) {
-      const extension = fileExtension(file.name);
-      let error = "";
-      if (!ACCEPTED_EXTENSIONS.has(extension)) {
-        error = "不支援此檔案格式";
-      } else if (!file.size) {
-        error = "不可選擇空白檔案";
-      } else if (file.size > MAX_FILE_SIZE_BYTES) {
-        error = "檔案不可超過 20 MB";
-      } else if (next.some((item) => sameFile(item.file, file))) {
-        error = "此檔案已在待上傳清單中";
+    try {
+      for (const file of files) {
+        const extension = fileExtension(file.name);
+        let error = "";
+        let fileType = extension;
+        if (!ACCEPTED_EXTENSIONS.has(extension)) {
+          error = "不支援此檔案格式";
+        } else if (!file.size) {
+          error = "不可選擇空白檔案";
+        } else if (file.size > MAX_FILE_SIZE_BYTES) {
+          error = "檔案不可超過 20 MB";
+        } else if (next.some((item) => sameFile(item.file, file))) {
+          error = "此檔案已在待上傳清單中";
+        } else {
+          try {
+            const detectedType = await detectedFileType(file, extension);
+            if (!detectedType) {
+              error = "內容不是有效的 XBRL 或 Inline XBRL 文件";
+            } else {
+              fileType = detectedType;
+            }
+          } catch {
+            error = "無法讀取檔案內容";
+          }
+        }
+        if (error) {
+          nextRejectedFiles.push({
+            id: createLocalId(),
+            fileName: file.name,
+            fileType: extension || "未知",
+            fileSize: file.size,
+            error,
+          });
+        } else {
+          next.push({ localId: createLocalId(), file, fileType });
+        }
       }
-      if (error) {
-        nextRejectedFiles.push({
-          id: createLocalId(),
-          fileName: file.name,
-          fileType: extension || "未知",
-          fileSize: file.size,
-          error,
-        });
-      } else {
-        next.push({ localId: createLocalId(), file });
+      setSelectedDocuments(next);
+      if (nextRejectedFiles.length) {
+        setRejectedFiles((current) => [...current, ...nextRejectedFiles]);
       }
-    }
-    setSelectedDocuments(next);
-    if (nextRejectedFiles.length) {
-      setRejectedFiles((current) => [...current, ...nextRejectedFiles]);
+    } finally {
+      isInspectingFilesRef.current = false;
+      setIsInspectingFiles(false);
     }
   }
 
   function handleFileInput(event: ChangeEvent<HTMLInputElement>) {
-    selectFiles(Array.from(event.target.files ?? []));
+    void selectFiles(Array.from(event.target.files ?? []));
     event.target.value = "";
   }
 
   function handleDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setIsDragging(false);
-    selectFiles(Array.from(event.dataTransfer.files));
+    void selectFiles(Array.from(event.dataTransfer.files));
   }
 
   return (
@@ -138,6 +225,7 @@ export function UploadDocumentsForm({
         type="file"
         multiple
         accept={FILE_INPUT_ACCEPT}
+        disabled={isInspectingFiles}
         onChange={handleFileInput}
         className="sr-only"
       />
@@ -177,12 +265,13 @@ export function UploadDocumentsForm({
           variant="outline"
           size="sm"
           className="mt-3"
+          disabled={isInspectingFiles}
           onClick={() => inputRef.current?.click()}
         >
-          選擇檔案
+          {isInspectingFiles ? "辨識檔案中…" : "選擇檔案"}
         </Button>
         <div className="mt-3 text-[11px] leading-5 text-slate-500">
-          PDF、DOCX、TXT、Markdown、CSV、XLSX；每個檔案上限 20 MB
+          PDF、DOCX、HTML、TXT、Markdown、CSV、XLSX、XBRL（含 Inline XBRL）；每個檔案上限 20 MB
         </div>
       </div>
 
@@ -213,7 +302,7 @@ export function UploadDocumentsForm({
               <TruncatedFileName name={item.file.name} />
               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
                 <span className="rounded bg-white px-1.5 py-0.5 font-semibold uppercase">
-                  {fileExtension(item.file.name)}
+                  {item.fileType}
                 </span>
                 <span>{formatFileSize(item.file.size)}</span>
               </div>
@@ -273,8 +362,14 @@ export function UploadDocumentsForm({
         <Button type="button" variant="outline" onClick={onCancel}>
           取消
         </Button>
-        <Button type="button" onClick={() => onConfirm(selectedDocuments)}>
-          確定{selectedDocuments.length ? ` (${selectedDocuments.length})` : ""}
+        <Button
+          type="button"
+          disabled={isInspectingFiles}
+          onClick={() => onConfirm(selectedDocuments)}
+        >
+          {isInspectingFiles
+            ? "辨識中…"
+            : `確定${selectedDocuments.length ? ` (${selectedDocuments.length})` : ""}`}
         </Button>
       </div>
     </div>
